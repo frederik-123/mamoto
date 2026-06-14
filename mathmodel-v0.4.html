@@ -1,0 +1,2953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MathModel – Modelling Workspace</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F7F5F0; --surface:#FFFFFF; --surface2:#F0EDE6;
+  --border:#D8D4CB; --border-soft:#E8E4DC;
+  --text:#1A1814; --text2:#6B6760; --text3:#9E9B95;
+  --accent:#2D5A8E; --accent-light:#E8EFF8;
+  --accent2:#B85C1A; --accent2-light:#FAF0E8;
+  --accent3:#2A7A4B; --accent3-light:#E8F5EE;
+  --red:#B83232; --red-light:#FBE8E8;
+  --canvas-dot:#D0CCC4;
+  --shadow:0 2px 8px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
+  --shadow-xl:0 20px 60px rgba(0,0,0,.18),0 4px 16px rgba(0,0,0,.08);
+  --r:10px;
+  --lib-h:130px;
+  --font-serif:'DM Serif Display',Georgia,serif;
+  --font-sans:'Instrument Sans',system-ui,sans-serif;
+  --font-mono:'DM Mono',monospace;
+}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--text);
+  height:100vh;overflow:hidden;user-select:none}
+
+/* â”€â”€ TOPBAR â”€â”€ */
+#topbar{
+  position:fixed;top:0;left:0;right:0;height:52px;z-index:200;
+  background:var(--surface);border-bottom:1px solid var(--border-soft);
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px;
+}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-mark{width:30px;height:30px;background:var(--text);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;}
+.brand-name{font-family:var(--font-serif);font-size:18px;letter-spacing:-.02em}
+.brand-name span{color:var(--accent)}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.btn{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;
+  font-size:13px;font-weight:500;font-family:var(--font-sans);cursor:pointer;
+  transition:all .15s;border:1px solid transparent;}
+.btn-ghost{background:transparent;color:var(--text2);border-color:var(--border-soft)}
+.btn-ghost:hover{background:var(--surface2);color:var(--text);border-color:var(--border)}
+.btn-primary{background:var(--text);color:#fff;border-color:var(--text)}
+.btn-primary:hover{background:#333}
+.btn-danger-soft{color:var(--red)!important;border-color:var(--red-light)!important}
+.btn-danger-soft:hover{background:var(--red-light)!important}
+.divider-v{width:1px;height:24px;background:var(--border-soft);margin:0 4px}
+
+/* â”€â”€ CANVAS AREA â”€â”€ */
+#canvas-wrap{
+  position:fixed;top:52px;left:0;right:0;
+  bottom:var(--lib-h);cursor:grab;overflow:hidden;
+}
+#canvas-wrap.grabbing{cursor:grabbing}
+#canvas{position:absolute;transform-origin:0 0}
+#canvas-wrap::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(circle,var(--canvas-dot) 1px,transparent 1px);
+  background-size:28px 28px;
+}
+#grid{position:relative}
+
+/* â”€â”€ CELL WRAPPER â”€â”€ */
+.cell-wrapper{position:absolute}
+.add-btn{
+  position:absolute;width:28px;height:28px;border-radius:6px;
+  background:var(--surface);border:1.5px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;z-index:10;padding:0;box-shadow:var(--shadow);
+  transition:opacity .15s,background .15s,border-color .15s;
+}
+.add-btn svg{stroke:var(--text2)}
+.add-btn:hover{background:var(--accent);border-color:var(--accent);box-shadow:var(--shadow-lg)}
+.add-btn:hover svg{stroke:#fff}
+.cell-wrapper:hover .add-btn{opacity:1}
+.add-top   {top:-20px;   left:50%;transform:translate(-50%,-50%)}
+.add-bottom{bottom:-20px;left:50%;transform:translate(-50%,50%)}
+.add-left  {left:-20px;  top:50%; transform:translate(-50%,-50%)}
+.add-right {right:-20px; top:50%; transform:translate(50%,-50%)}
+
+/* â”€â”€ CARD â”€â”€ */
+.card{
+  width:240px;height:200px;background:var(--surface);
+  border:1.5px solid var(--border-soft);border-radius:var(--r);
+  box-shadow:var(--shadow);display:flex;flex-direction:column;
+  overflow:hidden;transition:border-color .15s,box-shadow .15s;
+  cursor:pointer;
+}
+.card:hover{border-color:var(--border);box-shadow:var(--shadow-lg)}
+.card.selected{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-light),var(--shadow-lg)}
+.card.has-text  {border-top:3px solid var(--accent)}
+.card.has-sketch{border-top:3px solid var(--accent2)}
+.card.has-voice {border-top:3px solid var(--accent3)}
+.card.empty{border-style:dashed;border-color:var(--border);box-shadow:none}
+.card.empty:hover{border-color:var(--accent);background:var(--accent-light)}
+.card.drop-target{
+  border-color:var(--accent)!important;border-style:solid!important;
+  box-shadow:0 0 0 3px var(--accent-light),var(--shadow-lg)!important;
+  background:var(--accent-light)!important;
+}
+.cell-wrapper.dragging-card{opacity:.3;pointer-events:none}
+
+/* card header */
+.card-header{
+  padding:7px 8px 6px;border-bottom:1px solid var(--border-soft);
+  display:flex;align-items:center;gap:6px;flex-shrink:0;
+}
+.type-dot{flex-shrink:0;width:7px;height:7px;border-radius:50%}
+.dot-text  {background:var(--accent)}
+.dot-sketch{background:var(--accent2)}
+.dot-voice {background:var(--accent3)}
+.card-title-input{
+  flex:1;min-width:0;font-size:12px;font-weight:600;font-family:var(--font-sans);
+  color:var(--text);background:transparent;border:none;outline:none;
+  padding:1px 3px;border-radius:4px;cursor:text;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background .1s,box-shadow .1s;
+}
+.card-title-input::placeholder{color:var(--text3);font-weight:400;font-style:italic}
+.card-title-input:focus{background:var(--surface2);box-shadow:0 0 0 1.5px var(--accent)}
+.card-actions{display:flex;gap:2px;flex-shrink:0}
+.card-action-btn{
+  width:22px;height:22px;border-radius:5px;border:none;background:transparent;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s;
+}
+.card-action-btn:hover{background:var(--surface2)}
+.card-action-btn.del:hover{background:var(--red-light)}
+.card-action-btn.del:hover svg{stroke:var(--red)!important}
+
+/* card body */
+.card-body{flex:1;padding:10px;overflow:hidden;display:flex;flex-direction:column}
+.card-body.center{align-items:center;justify-content:center;gap:10px}
+.card-text-content{
+  flex:1;font-size:13px;line-height:1.6;color:var(--text);
+  word-break:break-word;overflow:hidden;font-family:var(--font-sans);
+}
+.card-text-content b,.card-text-content strong{font-weight:700}
+.card-text-content i,.card-text-content em{font-style:italic}
+.card-text-content.empty-preview{color:var(--text3);font-style:italic}
+.card-sketch-preview{flex:1;width:100%;border-radius:6px;overflow:hidden;background:var(--bg)}
+.card-sketch-preview canvas{width:100%;height:100%;display:block}
+.card-voice-preview{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;
+}
+.card-voice-preview audio{width:100%;height:32px;outline:none}
+.card-voice-label{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px}
+
+/* add-from-library button inside empty card */
+.add-from-lib-btn{
+  display:flex;align-items:center;gap:7px;
+  padding:8px 14px;border-radius:8px;
+  border:1.5px solid var(--border-soft);background:var(--surface2);
+  font-size:12px;font-weight:600;font-family:var(--font-sans);
+  color:var(--text2);cursor:pointer;transition:all .15s;
+}
+.add-from-lib-btn:hover{
+  background:var(--accent-light);border-color:var(--accent);color:var(--accent)
+}
+.add-from-lib-btn:hover svg{stroke:var(--accent)}
+
+/* â”€â”€ MEDIA LIBRARY â”€â”€ */
+#library{
+  position:fixed;bottom:0;left:0;right:0;height:var(--lib-h);z-index:300;
+  background:var(--surface);border-top:1.5px solid var(--border);
+  box-shadow:0 -4px 24px rgba(0,0,0,.08);
+  display:flex;flex-direction:column;
+}
+#library-header{
+  padding:6px 16px 4px;display:flex;align-items:center;
+  justify-content:space-between;flex-shrink:0;
+}
+#library-header h2{
+  font-family:var(--font-serif);font-size:13px;color:var(--text2);
+  letter-spacing:.04em;text-transform:uppercase;font-weight:400;
+}
+#library-scroll{
+  flex:1;overflow-x:auto;overflow-y:hidden;
+  display:flex;align-items:center;gap:10px;
+  padding:0 16px 8px;
+}
+#library-scroll::-webkit-scrollbar{height:4px}
+#library-scroll::-webkit-scrollbar-track{background:transparent}
+#library-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+#library-empty{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:var(--text3);font-style:italic;
+  padding-bottom:8px;
+}
+
+/* library item thumbnail */
+.lib-item{
+  flex-shrink:0;width:84px;height:80px;border-radius:8px;
+  background:var(--surface2);border:1.5px solid var(--border-soft);
+  cursor:grab;position:relative;overflow:hidden;
+  transition:border-color .15s,box-shadow .15s,transform .15s;
+  display:flex;flex-direction:column;
+}
+.lib-item:hover{
+  border-color:var(--border);box-shadow:var(--shadow-lg);transform:translateY(-2px);
+}
+.lib-item.lib-dragging{opacity:.4;transform:scale(.95)}
+.lib-item-stripe{height:5px;flex-shrink:0;border-radius:6px 6px 0 0}
+.stripe-text  {background:var(--accent)}
+.stripe-sketch{background:var(--accent2)}
+.stripe-voice {background:var(--accent3)}
+.lib-item-body{
+  flex:1;padding:4px 6px;overflow:hidden;
+  display:flex;flex-direction:column;justify-content:center;
+}
+.lib-item-label{
+  font-size:10px;font-weight:600;color:var(--text2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;
+}
+.lib-item-preview{
+  font-size:10px;color:var(--text3);line-height:1.3;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+}
+.lib-item-del{
+  position:absolute;top:4px;right:4px;width:16px;height:16px;
+  background:rgba(255,255,255,.85);border:none;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;opacity:0;transition:opacity .15s;padding:0;
+}
+.lib-item:hover .lib-item-del{opacity:1}
+.lib-item-del:hover{background:var(--red-light)}
+.lib-item-del:hover svg{stroke:var(--red)}
+.lib-item-canvas{width:100%;flex:1;display:block;object-fit:cover}
+
+/* â”€â”€ FAB (floating action button) â”€â”€ */
+#fab-wrap{
+  position:fixed;right:24px;bottom:calc(var(--lib-h) + 20px);
+  z-index:400;display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+#fab-options{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  opacity:0;pointer-events:none;transform:translateY(10px);
+  transition:opacity .2s,transform .2s;
+}
+#fab-wrap:hover #fab-options,
+#fab-wrap.open #fab-options{opacity:1;pointer-events:all;transform:translateY(0)}
+.fab-option{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 14px 7px 10px;border-radius:20px;
+  border:none;cursor:pointer;font-size:13px;font-weight:600;
+  font-family:var(--font-sans);box-shadow:var(--shadow-lg);
+  transition:transform .1s,box-shadow .1s;white-space:nowrap;
+}
+.fab-option:hover{transform:scale(1.04);box-shadow:var(--shadow-xl)}
+.fab-text  {background:var(--accent);color:#fff}
+.fab-sketch{background:var(--accent2);color:#fff}
+.fab-voice {background:var(--accent3);color:#fff}
+#fab-main{
+  width:52px;height:52px;border-radius:50%;border:none;
+  background:var(--text);color:#fff;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--shadow-xl);transition:transform .2s,background .15s;
+  flex-shrink:0;
+}
+#fab-main:hover,#fab-wrap:hover #fab-main,#fab-wrap.open #fab-main{
+  background:var(--accent);transform:rotate(45deg);
+}
+
+/* â”€â”€ MODAL â”€â”€ */
+#modal-overlay{
+  position:fixed;inset:0;background:rgba(20,18,14,.5);
+  z-index:500;display:none;align-items:center;justify-content:center;
+  backdrop-filter:blur(3px);
+}
+#modal-overlay.open{display:flex}
+#modal{
+  background:var(--surface);border-radius:16px;box-shadow:var(--shadow-xl);
+  width:1340px;max-width:98vw;max-height:92vh;
+  display:flex;flex-direction:column;overflow:hidden;
+  animation:modal-in .2s ease;
+}
+@keyframes modal-in{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}
+.modal-body{padding:24px;flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:16px}
+.modal-footer{
+  padding:16px 24px;border-top:1px solid var(--border-soft);
+  display:flex;justify-content:space-between;align-items:center;flex-shrink:0;
+}
+
+/* â”€â”€ TEXT EDITOR â”€â”€ */
+#text-editor{
+  width:100%;height:532px;padding:14px;outline:none;
+  border:1.5px solid var(--border-soft);border-radius:9px;
+  font-family:var(--font-sans);font-size:14px;line-height:1.8;
+  color:var(--text);background:var(--bg);transition:border-color .15s;
+  word-break:break-word;
+}
+#text-editor:focus{border-color:var(--accent)}
+#text-editor b,#text-editor strong{font-weight:700}
+#text-editor i,#text-editor em{font-style:italic}
+.editor-toolbar{
+  display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+  padding:7px 10px;background:var(--surface2);border-radius:8px;
+}
+.editor-tb-btn{
+  padding:4px 8px;border-radius:5px;border:1px solid transparent;
+  background:transparent;font-size:12px;font-weight:500;
+  cursor:pointer;font-family:var(--font-sans);color:var(--text2);
+  transition:all .1s;white-space:nowrap;line-height:1.4;
+}
+.editor-tb-btn:hover{background:var(--surface);color:var(--text);border-color:var(--border-soft)}
+.editor-tb-btn.active{background:var(--accent-light);color:var(--accent);border-color:var(--accent)}
+.editor-tb-btn.math{font-family:var(--font-mono);font-size:13px;color:var(--accent)}
+.editor-tb-btn.math:hover{background:var(--accent-light);border-color:var(--accent)}
+.editor-tb-sep{width:1px;height:20px;background:var(--border-soft);margin:0 2px;flex-shrink:0}
+
+/* â”€â”€ SKETCH EDITOR â”€â”€ */
+#sketch-wrap{border:1.5px solid var(--border-soft);border-radius:9px;overflow:hidden;background:#fff}
+#sketch-canvas{display:block;cursor:crosshair;touch-action:none}
+.sketch-toolbar{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:8px 10px;background:var(--surface2);border-bottom:1px solid var(--border-soft);
+}
+.sk-btn{
+  width:30px;height:30px;border-radius:6px;border:1.5px solid transparent;
+  background:var(--surface);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .1s;
+}
+.sk-btn:hover,.sk-btn.active{border-color:var(--accent);background:var(--accent-light)}
+.sk-btn.erase:hover,.sk-btn.erase.active{border-color:var(--red);background:var(--red-light)}
+.sk-btn:disabled{opacity:.35;cursor:not-allowed}
+.sk-btn:disabled:hover{background:var(--surface);border-color:transparent}
+.sk-sep{width:1px;height:22px;background:var(--border-soft);margin:0 2px;flex-shrink:0}
+.color-dot{
+  width:20px;height:20px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;transition:transform .1s,border-color .1s;
+}
+.color-dot:hover{transform:scale(1.2)}
+.color-dot.active{border-color:var(--text);transform:scale(1.15)}
+#sk-size{width:60px;accent-color:var(--accent)}
+
+/* â”€â”€ VOICE RECORDER â”€â”€ */
+#voice-wrap{display:flex;flex-direction:column;align-items:center;gap:20px;padding:16px 0}
+#voice-status{font-size:13px;color:var(--text2);min-height:20px;text-align:center}
+#voice-visualiser{
+  width:100%;height:60px;border-radius:8px;background:var(--surface2);
+  border:1.5px solid var(--border-soft);display:block;
+}
+#voice-controls{display:flex;gap:12px;align-items:center;justify-content:center}
+.voice-btn{
+  display:flex;align-items:center;gap:7px;
+  padding:9px 20px;border-radius:24px;border:none;
+  font-size:13px;font-weight:600;font-family:var(--font-sans);
+  cursor:pointer;transition:all .15s;
+}
+.voice-btn-record{background:var(--red);color:#fff}
+.voice-btn-record:hover{background:#9a2828}
+.voice-btn-stop{background:var(--surface2);color:var(--text);border:1.5px solid var(--border)}
+.voice-btn-stop:hover{background:var(--border-soft)}
+.voice-btn-play{background:var(--accent3);color:#fff}
+.voice-btn-play:hover{filter:brightness(1.1)}
+.voice-duration{font-size:12px;color:var(--text3);font-family:var(--font-mono)}
+#voice-playback{width:100%;display:none}
+#voice-playback audio{width:100%;border-radius:8px}
+
+/* â”€â”€ ZOOM â”€â”€ */
+#zoom-controls{
+  position:fixed;right:24px;top:64px;
+  display:flex;flex-direction:column;gap:4px;z-index:200;
+}
+.zoom-btn{
+  width:34px;height:34px;border-radius:8px;
+  background:var(--surface);border:1px solid var(--border-soft);
+  box-shadow:var(--shadow);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .1s;
+}
+.zoom-btn:hover{background:var(--accent-light);border-color:var(--accent)}
+.zoom-btn:hover svg{stroke:var(--accent)}
+#zoom-label{text-align:center;font-size:11px;font-weight:600;
+  color:var(--text3);font-family:var(--font-mono);padding:2px 0}
+
+/* â”€â”€ TOAST â”€â”€ */
+#toast{
+  position:fixed;bottom:calc(var(--lib-h) + 16px);left:50%;
+  transform:translateX(-50%) translateY(8px);
+  background:var(--text);color:#fff;
+  padding:9px 18px;border-radius:8px;font-size:13px;font-weight:500;
+  opacity:0;transition:opacity .2s,transform .2s;
+  z-index:600;pointer-events:none;white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* recording pulse */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.recording-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--red);
+  animation:pulse 1s ease-in-out infinite;
+}
+
+/* â”€â”€ 3D MODEL â”€â”€ */
+.card.has-model{border-top:3px solid #7B3FA0}
+.dot-model{background:#7B3FA0}
+.stripe-model{background:#7B3FA0}
+.card-model-preview{flex:1;width:100%;border-radius:6px;overflow:hidden;background:#e8eef7}
+.card-model-preview canvas{width:100%;height:100%;display:block}
+.fab-model{background:#7B3FA0;color:#fff}
+
+/* 3D editor layout */
+#editor3d-wrap{display:flex;gap:0;height:580px;border:1.5px solid var(--border-soft);border-radius:9px;overflow:hidden}
+#editor3d-sidebar{
+  width:100px;flex-shrink:0;background:var(--surface2);
+  border-right:1px solid var(--border-soft);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#editor3d-sidebar-top{padding:10px;border-bottom:1px solid var(--border-soft);flex-shrink:0}
+#editor3d-sidebar-top p{font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--text3);margin-bottom:8px}
+.shape-add-btn-wrap{display:flex;flex-wrap:wrap;gap:5px}
+.shape-add-btn{
+  display:flex;align-items:center;justify-content:center;
+  width:calc(100% - 4px);padding:6px 4px;border-radius:7px;border:1px solid var(--border-soft);
+  background:var(--surface);cursor:pointer;transition:all .12s;
+}
+.shape-add-btn:hover{background:var(--accent-light);border-color:var(--accent)}
+
+#editor3d-canvas-wrap{flex:1;position:relative;background:#e8eef7;cursor:grab}
+#editor3d-canvas-wrap.grabbing{cursor:grabbing}
+#editor3d-canvas{width:100%;height:100%;display:block}
+#editor3d-props{
+  width:280px;flex-shrink:0;background:var(--surface2);
+  border-left:1px solid var(--border-soft);
+  padding:14px;overflow-y:auto;
+}
+#editor3d-props h3{font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--text3);margin-bottom:10px}
+.prop-group{margin-bottom:12px}
+.prop-group label{display:block;font-size:11px;color:var(--text2);margin-bottom:4px;font-weight:600}
+.prop-row{display:flex;gap:4px;margin-bottom:4px}
+/* stacked field: label row above, then number+slider */
+.prop-field{margin-bottom:10px}
+.prop-field-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:3px}
+.prop-field-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em}
+.prop-field-val{font-size:11px;font-family:var(--font-mono);color:var(--accent);min-width:36px;text-align:right}
+.prop-input{
+  width:100%;padding:5px 8px;border-radius:6px;border:1.5px solid var(--border-soft);
+  font-family:var(--font-mono);font-size:12px;color:var(--text);
+  background:var(--surface);outline:none;
+  transition:border-color .12s;margin-bottom:4px;
+}
+.prop-input:focus{border-color:var(--accent)}
+
+.prop-xyz{font-size:9px;color:var(--text3);text-align:center;margin-top:1px}
+.prop-swatches{display:grid;grid-template-columns:repeat(7,22px);gap:5px;padding:2px 0}
+.prop-swatch{
+  width:22px;height:22px;border-radius:5px;border:2px solid transparent;
+  cursor:pointer;transition:transform .1s,border-color .1s;flex-shrink:0;
+}
+.prop-swatch:hover{transform:scale(1.15)}
+.prop-swatch.active{border-color:var(--text);transform:scale(1.12)}
+#editor3d-hint{
+  position:absolute;bottom:8px;left:50%;transform:translateX(-50%);
+  font-size:11px;color:rgba(255,255,255,.45);pointer-events:none;white-space:nowrap;
+}
+#editor3d-empty-props{color:var(--text3);font-size:12px;font-style:italic;margin-top:4px}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<header id="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="16" r="2"/><circle cx="5" cy="16" r="2"/><line x1="12" y1="7" x2="12" y2="10"/><line x1="17.7" y1="15" x2="14" y2="13"/><line x1="6.3" y1="15" x2="10" y2="13"/></svg>
+    </div>
+    <span class="brand-name">Math<span>Model</span></span>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-ghost" id="btn-new">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>New
+    </button>
+    <div class="divider-v"></div>
+    <button class="btn btn-ghost" id="btn-load">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>Load
+    </button>
+    <button class="btn btn-primary" id="btn-save">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Save
+    </button>
+    <input type="file" id="file-input" accept=".json" style="display:none">
+    <div class="divider-v"></div>
+    <button class="btn btn-ghost" id="btn-usage">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="2"/><circle cx="12" cy="11" r="2"/><circle cx="18" cy="6" r="2"/><line x1="7.5" y1="16.5" x2="10.5" y2="12.5"/><line x1="13.5" y1="9.5" x2="16.5" y2="7.5"/></svg>Usage log
+    </button>
+  </div>
+</header>
+
+<!-- CANVAS -->
+<div id="canvas-wrap">
+  <div id="canvas"><div id="grid"></div></div>
+</div>
+
+<!-- ZOOM -->
+<div id="zoom-controls">
+  <button class="zoom-btn" id="zoom-in" title="Zoom in">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+  <div id="zoom-label">100%</div>
+  <button class="zoom-btn" id="zoom-out" title="Zoom out">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+  <button class="zoom-btn" id="zoom-fit" title="Fit to screen">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+  </button>
+</div>
+
+<!-- MEDIA LIBRARY -->
+<div id="library">
+  <div id="library-header">
+    <h2>Media Library</h2>
+    <span id="library-count" style="font-size:11px;color:var(--text3)"></span>
+  </div>
+  <div id="library-scroll">
+    <div id="library-empty">No items yet – use the + button to create content</div>
+  </div>
+</div>
+
+<!-- FAB -->
+<div id="fab-wrap">
+  <div id="fab-options">
+    <button class="fab-option fab-text" id="fab-text">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      Text
+    </button>
+    <button class="fab-option fab-sketch" id="fab-sketch">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+      Sketch
+    </button>
+    <button class="fab-option fab-model" id="fab-model">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-5 9 5v10l-9 5-9-5V7z"/><line x1="12" y1="12" x2="12" y2="22"/><line x1="3" y1="7" x2="12" y2="12"/><line x1="21" y1="7" x2="12" y2="12"/></svg>
+      3D Model
+    </button>
+    <button class="fab-option fab-voice" id="fab-voice">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      Voice
+    </button>
+  </div>
+  <button id="fab-main" title="Create new content">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay" role="dialog" aria-modal="true">
+  <div id="modal">
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  SVG ICONS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const SVG = {
+  pen:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>',
+  line:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  erase:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H7L3 16l10-10 7 7-3.5 3.5"/><path d="M6 11l7 7"/></svg>',
+  trash:  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>',
+  upload: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/><polyline points="16 5 19 2 22 5"/><line x1="19" y1="2" x2="19" y2="10"/></svg>',
+  undo:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>',
+  redo:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>',
+  check:  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  pencil: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>',
+  plus:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  mic:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>',
+  stop:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>',
+  play:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  undoSm: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>',
+  redoSm: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>',
+  lib:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
+};
+const ico = k => `<span style="display:inline-flex;align-items:center;justify-content:center">${SVG[k]}</span>`;
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  CONSTANTS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const CELL_W = 240, CELL_H = 200, CELL_GAP = 40;
+const SLOT_W = CELL_W + CELL_GAP, SLOT_H = CELL_H + CELL_GAP;
+const COLORS = ['#1A1814','#2D5A8E','#B85C1A','#2A7A4B','#B83232','#7B3FA0'];
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  STATE
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// library: [{id, type:'text'|'sketch'|'voice', label, content, createdAt}]
+// cells:   {"r,c": {title, libraryItemId|null}}
+const state = {
+  cells: {},
+  library: [],
+  panX: 0, panY: 0, zoom: 1,
+  selectedKey: null,
+  dragCardKey: null,   // card being dragged on canvas
+  dragLibId: null,     // library item being dragged onto a card
+  _saveAndClose: null,
+};
+
+let libIdCounter = 1;
+function newLibId(){ return 'lib_' + (libIdCounter++); }
+
+function initCells(){
+  state.cells['0,0'] = { title:'', libraryItemId: null };
+}
+initCells();
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  USAGE LOG
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+window.__usageLog = [];
+function logUsage(event, detail = {}){
+  window.__usageLog.push({ t: Date.now(), event, ...detail });
+}
+logUsage('session_start');
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  DOM REFS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const gridEl      = document.getElementById('grid');
+const canvasEl    = document.getElementById('canvas');
+const canvasWrap  = document.getElementById('canvas-wrap');
+const overlay     = document.getElementById('modal-overlay');
+const modalBody   = document.getElementById('modal-body');
+const modalFooter = document.getElementById('modal-footer');
+const libScroll   = document.getElementById('library-scroll');
+const libEmpty    = document.getElementById('library-empty');
+const libCount    = document.getElementById('library-count');
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  LIBRARY HELPERS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function getLibItem(id){ return state.library.find(x => x.id === id) || null; }
+
+function addLibItem(item){
+  state.library.push(item);
+  renderLibrary();
+  logUsage('lib_item_add', {id: item.id, type: item.type});
+}
+
+function deleteLibItem(id){
+  state.library = state.library.filter(x => x.id !== id);
+  // detach from any cards referencing it
+  for(const cell of Object.values(state.cells)){
+    if(cell.libraryItemId === id) cell.libraryItemId = null;
+  }
+  renderLibrary();
+  rerender();
+  logUsage('lib_item_delete', {id});
+}
+
+function renderLibrary(){
+  // remove all item nodes (keep #library-empty)
+  libScroll.querySelectorAll('.lib-item').forEach(el => el.remove());
+  libEmpty.style.display = state.library.length ? 'none' : 'flex';
+  libCount.textContent = state.library.length ? `${state.library.length} item${state.library.length>1?'s':''}` : '';
+
+  state.library.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'lib-item';
+    el.dataset.id = item.id;
+    el.setAttribute('draggable', 'true');
+    el.title = item.label || item.type;
+
+    const stripe = document.createElement('div');
+    stripe.className = `lib-item-stripe stripe-${item.type}`;
+    el.appendChild(stripe);
+
+    const body = document.createElement('div');
+    body.className = 'lib-item-body';
+
+    const label = document.createElement('div');
+    label.className = 'lib-item-label';
+    label.textContent = item.label || '(untitled)';
+    body.appendChild(label);
+
+    if(item.type === 'text'){
+      const prev = document.createElement('div');
+      prev.className = 'lib-item-preview';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = item.content || '';
+      prev.textContent = (tmp.textContent || '').trim().slice(0, 60);
+      body.appendChild(prev);
+    } else if(item.type === 'sketch'){
+      if(item.content){
+        const img = document.createElement('img');
+        img.src = item.content;
+        img.style.cssText = 'width:100%;height:44px;object-fit:cover;border-radius:0 0 6px 6px;display:block';
+        body.appendChild(img);
+      } else {
+        const prev = document.createElement('div');
+        prev.className = 'lib-item-preview';
+        prev.textContent = 'Sketch';
+        body.appendChild(prev);
+      }
+    } else if(item.type === 'voice'){
+      const prev = document.createElement('div');
+      prev.className = 'lib-item-preview';
+      prev.innerHTML = `${ico('mic')} ${item.duration || ''}`;
+      body.appendChild(prev);
+    }
+    el.appendChild(body);
+
+    // delete button
+    const del = document.createElement('button');
+    del.className = 'lib-item-del';
+    del.title = 'Remove from library';
+    del.innerHTML = `<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    del.addEventListener('click', e => { e.stopPropagation(); deleteLibItem(item.id); });
+    el.appendChild(del);
+
+    // drag from library
+    el.addEventListener('dragstart', e => {
+      state.dragLibId = item.id;
+      e.dataTransfer.effectAllowed = 'copy';
+      el.classList.add('lib-dragging');
+      // drag image: simple type-coloured tile
+      const dc = buildLibDragImage(item);
+      document.body.appendChild(dc);
+      e.dataTransfer.setDragImage(dc, 42, 40);
+      setTimeout(() => document.body.removeChild(dc), 0);
+      logUsage('lib_drag_start', {id: item.id});
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('lib-dragging');
+      state.dragLibId = null;
+    });
+
+    // open editor on click
+    el.addEventListener('click', () => openLibItemEditor(item.id));
+
+    // touch drag from library
+    wireLibItemTouch(el, item);
+
+    libScroll.appendChild(el);
+  });
+}
+
+function buildLibDragImage(item){
+  const W = 84, H = 80;
+  const dc = document.createElement('canvas');
+  dc.width = W; dc.height = H;
+  dc.style.position = 'fixed'; dc.style.top = '-200px';
+  const ctx = dc.getContext('2d');
+  const col = item.type==='sketch' ? '#B85C1A' : item.type==='voice' ? '#2A7A4B' : item.type==='model' ? '#7B3FA0' : '#2D5A8E';
+
+  // card shape via arcTo
+  function rr(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+    ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+    ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+    ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+  }
+  ctx.fillStyle='#fff'; rr(2,2,W-4,H-4,7); ctx.fill();
+  ctx.strokeStyle=col; ctx.lineWidth=2; rr(2,2,W-4,H-4,7); ctx.stroke();
+  ctx.fillStyle=col; ctx.fillRect(2,2,W-4,7);
+  ctx.fillStyle='#fff'; ctx.fillRect(2,2,7,7); ctx.fillRect(W-9,2,7,7);
+  ctx.fillStyle=col; rr(2,2,W-4,9,7); ctx.fill();
+  ctx.fillStyle='#D8D4CB';
+  ctx.fillRect(10,18,W-20,4); ctx.fillRect(10,27,W-20,4); ctx.fillRect(10,36,(W-20)*.6,4);
+  return dc;
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  GRID RENDER
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function rerender(){
+  // clean up any existing model preview renderers
+  if(window._modelPreviewDisposers){ window._modelPreviewDisposers.forEach(fn=>fn()); }
+  window._modelPreviewDisposers = [];
+  gridEl.innerHTML = '';
+  let minR=Infinity,maxR=-Infinity,minC=Infinity,maxC=-Infinity;
+  for(const k of Object.keys(state.cells)){
+    const [r,c]=k.split(',').map(Number);
+    minR=Math.min(minR,r);maxR=Math.max(maxR,r);
+    minC=Math.min(minC,c);maxC=Math.max(maxC,c);
+  }
+  if(minR===Infinity){minR=maxR=minC=maxC=0;}
+
+  gridEl.style.width  = ((maxC-minC+1)*SLOT_W-CELL_GAP)+'px';
+  gridEl.style.height = ((maxR-minR+1)*SLOT_H-CELL_GAP)+'px';
+  for(const [key,cell] of Object.entries(state.cells)){
+    const [r,c]=key.split(',').map(Number);
+    gridEl.appendChild(buildCellWrapper(key,r,c,cell,(c-minC)*SLOT_W,(r-minR)*SLOT_H));
+  }
+  updateTransform();
+  // init live 3D previews after DOM is ready
+  requestAnimationFrame(initModelPreviews);
+}
+
+function buildCellWrapper(key, row, col, cell, x, y){
+  const wrap = document.createElement('div');
+  wrap.className = 'cell-wrapper';
+  wrap.dataset.key = key;
+  wrap.style.left = x+'px'; wrap.style.top = y+'px';
+  wrap.style.width = CELL_W+'px'; wrap.style.height = CELL_H+'px';
+
+  // + buttons
+  ['top','bottom','left','right'].forEach(dir => {
+    if(state.cells[neighbourKey(row,col,dir)]) return;
+    const btn = document.createElement('button');
+    btn.className = `add-btn add-${dir}`;
+    btn.title = `Add card ${dir}`;
+    btn.innerHTML = SVG.plus;
+    btn.addEventListener('click', e => { e.stopPropagation(); addCell(row,col,dir); });
+    wrap.appendChild(btn);
+  });
+
+  const card = buildCard(key, cell);
+
+  // card drag (repositioning)
+  card.setAttribute('draggable','true');
+  card.addEventListener('dragstart', e => {
+    if(state.dragLibId) return; // library drag takes priority
+    state.dragCardKey = key;
+    e.dataTransfer.effectAllowed = 'move';
+    const item = cell.libraryItemId ? getLibItem(cell.libraryItemId) : null;
+    const dc = item ? buildLibDragImage(item) : buildEmptyDragImage();
+    document.body.appendChild(dc);
+    e.dataTransfer.setDragImage(dc, CELL_W/2, 30);
+    setTimeout(()=>{ document.body.removeChild(dc); wrap.classList.add('dragging-card'); },0);
+    logUsage('card_drag_start',{key});
+  });
+  card.addEventListener('dragend', ()=>{
+    wrap.classList.remove('dragging-card');
+    document.querySelectorAll('.card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+    state.dragCardKey = null;
+  });
+  wireCardTouch(card, key);  // touch repositioning
+
+  // accept drops: library items OR card swaps
+  wrap.addEventListener('dragover', e => {
+    if(!state.dragLibId && !state.dragCardKey) return;
+    if(state.dragCardKey === key) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = state.dragLibId ? 'copy' : 'move';
+    card.classList.add('drop-target');
+  });
+  wrap.addEventListener('dragleave', e => {
+    if(!wrap.contains(e.relatedTarget)) card.classList.remove('drop-target');
+  });
+  wrap.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    card.classList.remove('drop-target');
+    if(state.dragLibId){
+      // assign library item to this card
+      cell.libraryItemId = state.dragLibId;
+      const _dli = getLibItem(state.dragLibId);
+      if(_dli?.label) cell.title = _dli.label;
+      state.dragLibId = null;
+      logUsage('lib_item_assigned',{cardKey:key});
+      rerender();
+    } else if(state.dragCardKey && state.dragCardKey !== key){
+      // swap cards
+      const a = {...state.cells[state.dragCardKey]};
+      const b = {...state.cells[key]};
+      state.cells[state.dragCardKey] = b;
+      state.cells[key] = a;
+      state.dragCardKey = null;
+      logUsage('card_swap',{from:key});
+      rerender();
+    }
+  });
+
+  wrap.appendChild(card);
+  return wrap;
+}
+
+function buildEmptyDragImage(){
+  const W=CELL_W, H=40;
+  const dc=document.createElement('canvas');
+  dc.width=W; dc.height=H;
+  dc.style.position='fixed'; dc.style.top='-200px';
+  const ctx=dc.getContext('2d');
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#D8D4CB'; ctx.lineWidth=1.5;
+  ctx.strokeRect(1,1,W-2,H-2);
+  return dc;
+}
+
+function neighbourKey(r,c,dir){
+  return dir==='top'?`${r-1},${c}`:dir==='bottom'?`${r+1},${c}`:dir==='left'?`${r},${c-1}`:`${r},${c+1}`;
+}
+
+function buildCard(key, cell){
+  const item = cell.libraryItemId ? getLibItem(cell.libraryItemId) : null;
+  const hasContent = !!item;
+  const typeClass = item ? `has-${item.type}` : 'empty';
+
+  const card = document.createElement('div');
+  card.className = `card ${typeClass}`;
+  card.dataset.key = key;
+  if(state.selectedKey === key) card.classList.add('selected');
+
+  if(!hasContent){
+    const body = document.createElement('div');
+    body.className = 'card-body center';
+
+    const hint = document.createElement('p');
+    hint.className = 'empty-hint';
+    hint.style.marginBottom = '8px';
+    hint.textContent = 'Drop content here';
+    body.appendChild(hint);
+
+    const libBtn = document.createElement('button');
+    libBtn.className = 'add-from-lib-btn';
+    libBtn.innerHTML = `${ico('lib')} Add from library`;
+    libBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      selectCell(key);         // ensure card is selected on the same tap
+      showLibraryPicker(key);
+    });
+    body.appendChild(libBtn);
+    card.appendChild(body);
+    card.addEventListener('click', () => selectCell(key));
+  } else {
+    // header
+    const header = document.createElement('div');
+    header.className = 'card-header';
+
+    const dot = document.createElement('span');
+    dot.className = `type-dot dot-${item.type}`;
+
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.className = 'card-title-input';
+    titleInput.value = cell.title || '';
+    titleInput.placeholder = 'Untitled card';
+    titleInput.maxLength = 60;
+    titleInput.addEventListener('click', e => e.stopPropagation());
+    titleInput.addEventListener('mousedown', e => e.stopPropagation());
+    titleInput.addEventListener('blur', () => { cell.title = titleInput.value; });
+    titleInput.addEventListener('change', () => {
+      cell.title = titleInput.value;
+      logUsage('card_title_change',{key});
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'card-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'card-action-btn';
+    editBtn.title = 'Edit content';
+    editBtn.innerHTML = ico('pencil');
+    editBtn.addEventListener('click', e => { e.stopPropagation(); openLibItemEditor(item.id); });
+
+    const detachBtn = document.createElement('button');
+    detachBtn.className = 'card-action-btn del';
+    detachBtn.title = 'Remove content from card';
+    detachBtn.innerHTML = ico('trash');
+    detachBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      cell.libraryItemId = null;
+      logUsage('card_detach',{key});
+      rerender();
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(detachBtn);
+    header.appendChild(dot);
+    header.appendChild(titleInput);
+    header.appendChild(actions);
+    card.appendChild(header);
+
+    // body
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    if(item.type === 'text'){
+      const pre = document.createElement('div');
+      pre.className = 'card-text-content' + (item.content ? '' : ' empty-preview');
+      if(item.content) pre.innerHTML = item.content;
+      else pre.textContent = 'Empty text item.';
+      body.appendChild(pre);
+    } else if(item.type === 'sketch'){
+      const pw = document.createElement('div');
+      pw.className = 'card-sketch-preview';
+      const pc = document.createElement('canvas');
+      pc.width = 200; pc.height = 130;
+      pw.appendChild(pc);
+      body.appendChild(pw);
+      if(item.content){
+        const img = new Image();
+        img.onload = () => pc.getContext('2d').drawImage(img,0,0,200,130);
+        img.src = item.content;
+      }
+    } else if(item.type === 'model'){
+      const mp = document.createElement('div');
+      mp.className = 'card-model-preview';
+      mp.dataset.modelId = item.id;
+      // live 3D preview rendered after DOM insertion
+      body.appendChild(mp);
+    } else if(item.type === 'voice'){
+      const vp = document.createElement('div');
+      vp.className = 'card-voice-preview';
+      const lbl = document.createElement('div');
+      lbl.className = 'card-voice-label';
+      lbl.innerHTML = `${ico('mic')} Voice recording${item.duration?' · '+item.duration:''}`;
+      vp.appendChild(lbl);
+      if(item.content){
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.src = item.content;
+        audio.className = 'card-voice-preview audio';
+        vp.appendChild(audio);
+      }
+      body.appendChild(vp);
+    }
+    card.appendChild(body);
+    card.addEventListener('click', () => selectCell(key));
+  }
+  return card;
+}
+
+function selectCell(key){
+  state.selectedKey = key;
+  document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
+  document.querySelector(`.card[data-key="${key}"]`)?.classList.add('selected');
+  logUsage('card_select',{key});
+}
+
+// Library picker modal (when clicking "Add from library")
+function showLibraryPicker(cardKey){
+  if(!state.library.length){
+    toast('Library is empty – create content with the + button');
+    return;
+  }
+  modalBody.innerHTML =
+    '<p style="font-size:13px;color:var(--text2);margin-bottom:12px">Choose a library item to assign to this card:</p>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:10px;" id="lib-picker"></div>';
+  const picker = document.getElementById('lib-picker');
+  state.library.forEach(item => {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border-soft);background:var(--surface2);cursor:pointer;font-family:var(--font-sans);font-size:12px;font-weight:600;color:var(--text2);transition:all .15s;max-width:120px';
+    const dotCol = item.type==='sketch'?'var(--accent2)':item.type==='voice'?'var(--accent3)':'var(--accent)';
+    const tmp = document.createElement('div'); tmp.innerHTML = item.content||'';
+    const preview = item.type==='text' ? (tmp.textContent||'').trim().slice(0,30) : item.type==='sketch' ? '🖼 Sketch' : item.type==='model' ? '⬡ 3D Model' : '🎙 Voice';
+    btn.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${dotCol};display:inline-block"></span>${item.label||'(untitled)'}<span style="font-weight:400;color:var(--text3);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${preview}</span>`;
+    btn.addEventListener('mouseenter', ()=>{ btn.style.borderColor=dotCol; btn.style.background='var(--accent-light)'; });
+    btn.addEventListener('mouseleave', ()=>{ btn.style.borderColor='var(--border-soft)'; btn.style.background='var(--surface2)'; });
+    btn.addEventListener('click', ()=>{
+      state.cells[cardKey].libraryItemId = item.id;
+      if(item.label) state.cells[cardKey].title = item.label;
+      logUsage('lib_item_assigned_picker',{cardKey, itemId:item.id});
+      closeModal(); rerender();
+    });
+    picker.appendChild(btn);
+  });
+  modalFooter.innerHTML = '<button class="btn btn-ghost btn-danger-soft" id="cancel-picker">Cancel</button>';
+  openModal();
+  document.getElementById('cancel-picker').addEventListener('click', closeModal);
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  ADD / DELETE CELLS
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function addCell(row, col, dir){
+  const nKey = neighbourKey(row,col,dir);
+  if(state.cells[nKey]) return;
+  state.cells[nKey] = {title:'', libraryItemId:null};
+  logUsage('cell_add',{key:nKey,dir});
+  // Compensate pan so existing cells stay fixed on screen.
+  // Adding top/left shifts all cells down/right in grid-local coords;
+  // we move the canvas up/left by the same amount to cancel it out.
+  if(dir === 'top')  state.panY -= SLOT_H * state.zoom;
+  if(dir === 'left') state.panX -= SLOT_W * state.zoom;
+  rerender();
+}
+
+function deleteCell(key){
+  delete state.cells[key];
+  if(state.selectedKey===key) state.selectedKey=null;
+  logUsage('cell_delete',{key});
+  if(!Object.keys(state.cells).length){ initCells(); rerender(); centerView(); }
+  else rerender();
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  MODAL
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function openModal(){ overlay.classList.add('open'); }
+function closeModal(){ overlay.classList.remove('open'); state._saveAndClose=null; }
+overlay.addEventListener('click', e => {
+  if(e.target!==overlay) return;
+  if(state._saveAndClose) state._saveAndClose(); else closeModal();
+});
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  OPEN LIBRARY ITEM EDITOR
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function openLibItemEditor(id){
+  const item = getLibItem(id);
+  if(!item) return;
+  if(item.type==='text')   openTextEditor(item);
+  if(item.type==='sketch') openSketchEditor(item);
+  if(item.type==='voice')  openVoiceEditor(item);
+  if(item.type==='model')  open3DEditor(item);
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  TEXT EDITOR
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function openTextEditor(item){
+  const MATH = [
+    ['⋅','⋅'],['≠','≠'],['√','√'],['Σ','Σ'],['π','π'],
+  ];
+  modalBody.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+    '<label style="font-size:12px;font-weight:600;color:var(--text2)">Label</label>' +
+    '<input id="item-label" type="text" maxlength="60" placeholder="Name this item…" style="flex:1;padding:5px 10px;border-radius:6px;border:1.5px solid var(--border-soft);font-family:var(--font-sans);font-size:13px;outline:none;background:var(--bg)" value="' + (item.label||'').replace(/"/g,'&quot;') + '">' +
+    '</div>' +
+    '<div class="editor-toolbar" id="tb-main">' +
+    '<span style="font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--text3);text-transform:uppercase;margin-right:2px">Math</span>' +
+    MATH.map(([lbl],i)=>`<button class="editor-tb-btn math" data-math="${i}">${lbl}</button>`).join('') +
+    '<div class="editor-tb-sep"></div>' +
+    '<span style="font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--text3);text-transform:uppercase;margin-right:2px">Format</span>' +
+    '<button class="editor-tb-btn fmt-bold"      data-cmd="bold"        title="Bold">B</button>' +
+    '<button class="editor-tb-btn fmt-italic"    data-cmd="italic"      title="Italic">I</button>' +
+    '<button class="editor-tb-btn fmt-underline" data-cmd="underline"   title="Underline">U</button>' +
+    '<button class="editor-tb-btn fmt-super"     data-cmd="superscript" title="Superscript">x<sup style="font-size:.7em">n</sup></button>' +
+    '<button class="editor-tb-btn fmt-sub"       data-cmd="subscript"   title="Subscript">x<sub style="font-size:.7em">n</sub></button>' +
+    '<div class="editor-tb-sep"></div>' +
+    `<button class="editor-tb-btn" id="txt-undo" title="Undo">${ico('undoSm')}</button>` +
+    `<button class="editor-tb-btn" id="txt-redo" title="Redo">${ico('redoSm')}</button>` +
+    '</div>' +
+    '<div id="text-editor" contenteditable="true" spellcheck="true"></div>';
+
+  const editor = document.getElementById('text-editor');
+  editor.innerHTML = item.content || '';
+
+  function insertSymbol(ch){
+    editor.focus();
+    const sel=window.getSelection(); if(!sel.rangeCount) return;
+    const range=sel.getRangeAt(0); range.deleteContents();
+    range.insertNode(document.createTextNode(ch)); range.collapse(false);
+    sel.removeAllRanges(); sel.addRange(range);
+  }
+  document.querySelectorAll('[data-math]').forEach(btn=>{
+    const [,ch]=MATH[+btn.dataset.math];
+    btn.addEventListener('mousedown',e=>e.preventDefault());
+    btn.addEventListener('click',()=>insertSymbol(ch));
+  });
+  document.querySelectorAll('[data-cmd]').forEach(btn=>{
+    btn.addEventListener('mousedown',e=>e.preventDefault());
+    btn.addEventListener('click',()=>{ document.execCommand(btn.dataset.cmd,false,null); editor.focus(); updateFmt(); });
+  });
+  function updateFmt(){
+    ['bold','italic','underline','superscript','subscript'].forEach(cmd=>{
+      document.querySelector(`[data-cmd="${cmd}"]`)?.classList.toggle('active',document.queryCommandState(cmd));
+    });
+  }
+  editor.addEventListener('keyup',updateFmt);
+  editor.addEventListener('mouseup',updateFmt);
+  document.getElementById('txt-undo').addEventListener('mousedown',e=>e.preventDefault());
+  document.getElementById('txt-undo').addEventListener('click',()=>{ document.execCommand('undo'); editor.focus(); });
+  document.getElementById('txt-redo').addEventListener('mousedown',e=>e.preventDefault());
+  document.getElementById('txt-redo').addEventListener('click',()=>{ document.execCommand('redo'); editor.focus(); });
+
+  const origContent = item.content||'', origLabel = item.label||'';
+  function doSave(){
+    item.content = editor.innerHTML;
+    item.label = document.getElementById('item-label').value || 'Text';
+    closeModal(); renderLibrary(); rerender();
+    logUsage('text_save',{id:item.id, durationMs:Date.now()-_textOpenedAt}); toast('Saved');
+  }
+  function doDiscard(){ item.content=origContent; item.label=origLabel; logUsage('text_discard',{id:item.id, durationMs:Date.now()-_textOpenedAt}); closeModal(); }
+  state._saveAndClose = doSave;
+
+  modalFooter.innerHTML =
+    `<button class="btn btn-primary" id="save-text">${ico('check')}Save</button>` +
+    '<button class="btn btn-ghost btn-danger-soft" id="discard-text">Discard changes</button>';
+  openModal();
+  setTimeout(()=>{ editor.focus(); updateFmt(); },50);
+  document.getElementById('save-text').addEventListener('click',doSave);
+  document.getElementById('discard-text').addEventListener('click',doDiscard);
+  const _textOpenedAt = Date.now();
+  logUsage('text_editor_open',{id:item.id});
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  SKETCH EDITOR
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+let sketchCtx=null, sketchDrawing=false;
+let sketchTool='pen', sketchColor='#1A1814', sketchSize=4;
+let sketchUndoStack=[], sketchRedoStack=[];
+
+function openSketchEditor(item){
+  modalBody.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+    '<label style="font-size:12px;font-weight:600;color:var(--text2)">Label</label>' +
+    '<input id="item-label" type="text" maxlength="60" placeholder="Name this item…" style="flex:1;padding:5px 10px;border-radius:6px;border:1.5px solid var(--border-soft);font-family:var(--font-sans);font-size:13px;outline:none;background:var(--bg)" value="' + (item.label||'').replace(/"/g,'&quot;') + '">' +
+    '</div>' +
+    `<div id="sketch-wrap">
+      <div class="sketch-toolbar">
+        <button class="sk-btn active" id="sk-pen"   title="Pen">${ico('pen')}</button>
+        <button class="sk-btn"        id="sk-line"  title="Line">${ico('line')}</button>
+        <div class="sk-sep"></div>
+        ${COLORS.map((c,i)=>`<div class="color-dot${i===0?' active':''}" data-color="${c}" style="background:${c}" title="${c}"></div>`).join('')}
+        <button class="sk-btn erase" id="sk-erase" title="Eraser">${ico('erase')}</button>
+        <div class="sk-sep"></div>
+        <label for="sk-size" style="font-size:11px;color:var(--text2)">Size</label>
+        <input type="range" id="sk-size" min="1" max="20" value="${sketchSize}" style="width:70px">
+        <div class="sk-sep"></div>
+        <button class="sk-btn" id="sk-undo" title="Undo (Ctrl+Z)">${ico('undo')}</button>
+        <button class="sk-btn" id="sk-redo" title="Redo (Ctrl+Y)">${ico('redo')}</button>
+        <div class="sk-sep"></div>
+        <button class="sk-btn" id="sk-clear"  title="Clear">${ico('trash')}</button>
+        <button class="sk-btn" id="sk-upload" title="Upload image">${ico('upload')}</button>
+        <input type="file" id="sk-file" accept="image/*" style="display:none">
+      </div>
+      <canvas id="sketch-canvas"
+        style="width:100%;height:532px;touch-action:none"></canvas>
+    </div>`;
+
+  const origContent = item.content||'', origLabel = item.label||'';
+  function doSave(){
+    document.removeEventListener('keydown',sketchKeys);
+    item.content = canvas2.toDataURL('image/png');
+    item.label = document.getElementById('item-label').value || 'Sketch';
+    closeModal(); renderLibrary(); rerender();
+    logUsage('sketch_save',{id:item.id, durationMs:Date.now()-_sketchOpenedAt}); toast('Saved');
+  }
+  function doDiscard(){
+    document.removeEventListener('keydown',sketchKeys);
+    item.content=origContent; item.label=origLabel;
+    logUsage('sketch_discard',{id:item.id, durationMs:Date.now()-_sketchOpenedAt});
+    closeModal();
+  }
+  state._saveAndClose = doSave;
+
+  modalFooter.innerHTML =
+    `<button class="btn btn-primary" id="save-sketch">${ico('check')}Save</button>` +
+    '<button class="btn btn-ghost btn-danger-soft" id="discard-sketch">Discard changes</button>';
+  openModal();
+
+  const canvas2 = document.getElementById('sketch-canvas');
+  // Match bitmap resolution to CSS layout size — prevents stretch
+  canvas2.width  = canvas2.offsetWidth;
+  canvas2.height = canvas2.offsetHeight;
+  sketchCtx = canvas2.getContext('2d');
+  sketchUndoStack=[]; sketchRedoStack=[];
+  sketchCtx.fillStyle='#ffffff'; sketchCtx.fillRect(0,0,canvas2.width,canvas2.height);
+
+  function pushUndo(){
+    sketchUndoStack.push(sketchCtx.getImageData(0,0,canvas2.width,canvas2.height));
+    sketchRedoStack=[];
+    document.getElementById('sk-undo').disabled=false;
+    document.getElementById('sk-redo').disabled=true;
+  }
+  function updateUndoBtns(){
+    document.getElementById('sk-undo').disabled=!sketchUndoStack.length;
+    document.getElementById('sk-redo').disabled=!sketchRedoStack.length;
+  }
+
+  if(item.content){
+    const img=new Image();
+    img.onload=()=>{ sketchCtx.drawImage(img,0,0,canvas2.width,canvas2.height); updateUndoBtns(); };
+    img.src=item.content;
+  } else { updateUndoBtns(); }
+
+  sketchTool='pen';
+  ['pen','line','erase'].forEach(t=>{
+    document.getElementById('sk-'+t)?.addEventListener('click',()=>{
+      sketchTool=t;
+      document.querySelectorAll('.sk-btn').forEach(b=>b.classList.remove('active'));
+      document.getElementById('sk-'+t).classList.add('active');
+    });
+  });
+  document.querySelectorAll('.color-dot').forEach(dot=>{
+    dot.addEventListener('click',()=>{
+      document.querySelectorAll('.color-dot').forEach(d=>d.classList.remove('active'));
+      dot.classList.add('active'); sketchColor=dot.dataset.color;
+      if(sketchTool==='erase'){
+        sketchTool='pen';
+        document.querySelectorAll('.sk-btn').forEach(b=>b.classList.remove('active'));
+        document.getElementById('sk-pen').classList.add('active');
+      }
+    });
+  });
+  document.getElementById('sk-size').addEventListener('input',e=>{ sketchSize=parseInt(e.target.value); });
+  document.getElementById('sk-undo').addEventListener('click',()=>{
+    if(!sketchUndoStack.length) return;
+    sketchRedoStack.push(sketchCtx.getImageData(0,0,canvas2.width,canvas2.height));
+    sketchCtx.putImageData(sketchUndoStack.pop(),0,0); updateUndoBtns();
+  });
+  document.getElementById('sk-redo').addEventListener('click',()=>{
+    if(!sketchRedoStack.length) return;
+    sketchUndoStack.push(sketchCtx.getImageData(0,0,canvas2.width,canvas2.height));
+    sketchCtx.putImageData(sketchRedoStack.pop(),0,0); updateUndoBtns();
+  });
+  document.getElementById('sk-clear').addEventListener('click',()=>{
+    pushUndo(); sketchCtx.clearRect(0,0,canvas2.width,canvas2.height);
+    sketchCtx.fillStyle='#ffffff'; sketchCtx.fillRect(0,0,canvas2.width,canvas2.height);
+  });
+  document.getElementById('sk-upload').addEventListener('click',()=>document.getElementById('sk-file').click());
+  document.getElementById('sk-file').addEventListener('change',e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        pushUndo(); sketchCtx.clearRect(0,0,canvas2.width,canvas2.height);
+        sketchCtx.fillStyle='#ffffff'; sketchCtx.fillRect(0,0,canvas2.width,canvas2.height);
+        const s=Math.min(canvas2.width/img.width,canvas2.height/img.height);
+        sketchCtx.drawImage(img,(canvas2.width-img.width*s)/2,(canvas2.height-img.height*s)/2,img.width*s,img.height*s);
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  });
+
+  let lineStart=null,snapData=null;
+  function getPos(e){
+    const rect=canvas2.getBoundingClientRect();
+    const src=e.touches?e.touches[0]:e;
+    return{x:(src.clientX-rect.left)*canvas2.width/rect.width, y:(src.clientY-rect.top)*canvas2.height/rect.height};
+  }
+  function startDraw(e){
+    e.preventDefault(); sketchDrawing=true; pushUndo();
+    const p=getPos(e);
+    if(sketchTool==='line'){lineStart=p;snapData=sketchUndoStack[sketchUndoStack.length-1];}
+    else{sketchCtx.beginPath();sketchCtx.moveTo(p.x,p.y);}
+  }
+  function moveDraw(e){
+    if(!sketchDrawing) return; e.preventDefault();
+    const p=getPos(e);
+    if(sketchTool==='pen'){
+      sketchCtx.globalCompositeOperation='source-over';
+      sketchCtx.strokeStyle=sketchColor; sketchCtx.lineWidth=sketchSize;
+      sketchCtx.lineCap=sketchCtx.lineJoin='round';
+      sketchCtx.lineTo(p.x,p.y); sketchCtx.stroke();
+      sketchCtx.beginPath(); sketchCtx.moveTo(p.x,p.y);
+    } else if(sketchTool==='erase'){
+      sketchCtx.globalCompositeOperation='destination-out';
+      sketchCtx.lineWidth=sketchSize*2; sketchCtx.lineCap='round';
+      sketchCtx.beginPath(); sketchCtx.arc(p.x,p.y,sketchSize,0,Math.PI*2); sketchCtx.fill();
+      sketchCtx.globalCompositeOperation='source-over';
+    } else if(sketchTool==='line'&&lineStart){
+      sketchCtx.putImageData(snapData,0,0);
+      sketchCtx.beginPath(); sketchCtx.strokeStyle=sketchColor;
+      sketchCtx.lineWidth=sketchSize; sketchCtx.lineCap='round';
+      sketchCtx.moveTo(lineStart.x,lineStart.y); sketchCtx.lineTo(p.x,p.y); sketchCtx.stroke();
+    }
+  }
+  function endDraw(){ sketchDrawing=false; lineStart=null; snapData=null; }
+
+  canvas2.addEventListener('mousedown',startDraw);
+  canvas2.addEventListener('mousemove',moveDraw);
+  canvas2.addEventListener('mouseup',endDraw);
+  canvas2.addEventListener('mouseleave',endDraw);
+  canvas2.addEventListener('touchstart',startDraw,{passive:false});
+  canvas2.addEventListener('touchmove',moveDraw,{passive:false});
+  canvas2.addEventListener('touchend',endDraw);
+
+  function sketchKeys(e){
+    if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();document.getElementById('sk-undo').click();}
+    if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='Z'))){e.preventDefault();document.getElementById('sk-redo').click();}
+  }
+  document.addEventListener('keydown',sketchKeys);
+  state._saveAndClose=doSave;
+  document.getElementById('save-sketch').addEventListener('click',doSave);
+  document.getElementById('discard-sketch').addEventListener('click',doDiscard);
+  const _sketchOpenedAt = Date.now();
+  logUsage('sketch_editor_open',{id:item.id});
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  VOICE EDITOR
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function openVoiceEditor(item){
+  modalBody.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <label style="font-size:12px;font-weight:600;color:var(--text2)">Label</label>
+      <input id="item-label" type="text" maxlength="60" placeholder="Name this recording…"
+        style="flex:1;padding:5px 10px;border-radius:6px;border:1.5px solid var(--border-soft);font-family:var(--font-sans);font-size:13px;outline:none;background:var(--bg)"
+        value="${(item.label||'').replace(/"/g,'&quot;')}">
+    </div>
+    <div id="voice-wrap">
+      <canvas id="voice-visualiser"></canvas>
+      <div id="voice-status">Ready to record</div>
+      <div id="voice-controls">
+        <button class="voice-btn voice-btn-record" id="vc-record">${ico('mic')} Record</button>
+        <button class="voice-btn voice-btn-stop" id="vc-stop" style="display:none">${ico('stop')} Stop</button>
+        <span class="voice-duration" id="vc-duration"></span>
+      </div>
+      <div id="voice-playback">
+        <audio id="vc-audio" controls></audio>
+      </div>
+    </div>`;
+
+  const origContent=item.content||'', origLabel=item.label||'', origDuration=item.duration||'';
+  let mediaRecorder=null, audioChunks=[], audioBlob=null, animFrame=null, recInterval=null, recSeconds=0;
+
+  // show existing recording if any
+  if(item.content){
+    const pb=document.getElementById('voice-playback');
+    pb.style.display='block';
+    document.getElementById('vc-audio').src=item.content;
+    document.getElementById('voice-status').textContent='Previous recording loaded. Record again to replace.';
+  }
+
+  // draw idle waveform
+  const vis=document.getElementById('voice-visualiser');
+  vis.width=vis.offsetWidth||560; vis.height=60;
+  const vctx=vis.getContext('2d');
+  function drawIdle(){
+    vctx.clearRect(0,0,vis.width,vis.height);
+    vctx.strokeStyle='#D8D4CB'; vctx.lineWidth=1.5;
+    vctx.beginPath(); vctx.moveTo(0,30); vctx.lineTo(vis.width,30); vctx.stroke();
+  }
+  drawIdle();
+
+  let analyser=null, dataArray=null;
+  function drawWave(){
+    if(!analyser){animFrame=requestAnimationFrame(drawWave);return;}
+    analyser.getByteTimeDomainData(dataArray);
+    vctx.clearRect(0,0,vis.width,vis.height);
+    vctx.strokeStyle='var(--red,#B83232)'; vctx.lineWidth=2;
+    vctx.beginPath();
+    const step=vis.width/dataArray.length;
+    dataArray.forEach((v,i)=>{
+      const y=(v/128-1)*25+30;
+      i===0?vctx.moveTo(0,y):vctx.lineTo(i*step,y);
+    });
+    vctx.stroke();
+    animFrame=requestAnimationFrame(drawWave);
+  }
+
+  document.getElementById('vc-record').addEventListener('click', async()=>{
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      const AudioCtx=window.AudioContext||window.webkitAudioContext;
+      const actx=new AudioCtx();
+      const src=actx.createMediaStreamSource(stream);
+      analyser=actx.createAnalyser(); analyser.fftSize=256;
+      dataArray=new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser);
+
+      audioChunks=[];
+      // Pick best supported MIME type: webm (Chrome/FF), mp4 (Safari/iOS), or browser default
+      const mimeType=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus'
+        :MediaRecorder.isTypeSupported('audio/webm')?'audio/webm'
+        :MediaRecorder.isTypeSupported('audio/mp4')?'audio/mp4'
+        :'';
+      mediaRecorder=new MediaRecorder(stream, mimeType?{mimeType}:{});
+      mediaRecorder.ondataavailable=e=>{ if(e.data.size>0) audioChunks.push(e.data); };
+      mediaRecorder.onstop=()=>{
+        cancelAnimationFrame(animFrame); clearInterval(recInterval);
+        stream.getTracks().forEach(t=>t.stop());
+        logUsage('voice_recording_stop',{id:item.id, durationSec:recSeconds});
+        const blobType=mimeType||'audio/webm';
+        audioBlob=new Blob(audioChunks,{type:blobType});
+        const url=URL.createObjectURL(audioBlob);
+        const pb=document.getElementById('voice-playback');
+        pb.style.display='block';
+        document.getElementById('vc-audio').src=url;
+        document.getElementById('voice-status').textContent='Recording complete. Press Save to keep it.';
+        document.getElementById('vc-record').style.display='';
+        document.getElementById('vc-stop').style.display='none';
+        drawIdle();
+      };
+      mediaRecorder.start();
+      logUsage('voice_recording_start',{id:item.id});
+      recSeconds=0;
+      recInterval=setInterval(()=>{
+        recSeconds++;
+        document.getElementById('vc-duration').textContent=
+          Math.floor(recSeconds/60)+':'+(recSeconds%60).toString().padStart(2,'0');
+      },1000);
+      document.getElementById('vc-record').style.display='none';
+      document.getElementById('vc-stop').style.display='';
+      document.getElementById('voice-status').innerHTML='<span class="recording-dot"></span> &nbsp;Recording…';
+      drawWave();
+    } catch(err){
+      document.getElementById('voice-status').textContent='Microphone access denied. Please allow mic permissions.';
+      logUsage('voice_mic_denied');
+    }
+  });
+
+  document.getElementById('vc-stop').addEventListener('click',()=>{
+    if(mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop();
+  });
+
+  function doSave(){
+    clearInterval(recInterval); cancelAnimationFrame(animFrame);
+    if(mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop();
+    const labelEl=document.getElementById('item-label');
+    item.label=labelEl?labelEl.value||'Voice':'Voice';
+    item.duration=document.getElementById('vc-duration').textContent||'';
+    if(audioBlob){
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        item.content=ev.target.result;
+        closeModal(); renderLibrary(); rerender();
+        logUsage('voice_save',{id:item.id, durationMs:Date.now()-_voiceOpenedAt, recordingDurationSec:recSeconds}); toast('Saved');
+      };
+      reader.readAsDataURL(audioBlob);
+    } else {
+      item.label=item.label||origLabel;
+      closeModal(); renderLibrary(); rerender(); toast('Saved');
+    }
+  }
+  function doDiscard(){
+    clearInterval(recInterval); cancelAnimationFrame(animFrame);
+    if(mediaRecorder&&mediaRecorder.state!=='inactive') mediaRecorder.stop();
+    item.content=origContent; item.label=origLabel; item.duration=origDuration;
+    logUsage('voice_discard',{id:item.id, durationMs:Date.now()-_voiceOpenedAt});
+    closeModal();
+  }
+  state._saveAndClose=doSave;
+
+  modalFooter.innerHTML =
+    `<button class="btn btn-primary" id="save-voice">${ico('check')}Save</button>` +
+    '<button class="btn btn-ghost btn-danger-soft" id="discard-voice">Discard changes</button>';
+  openModal();
+  document.getElementById('save-voice').addEventListener('click',doSave);
+  document.getElementById('discard-voice').addEventListener('click',doDiscard);
+  const _voiceOpenedAt = Date.now();
+  logUsage('voice_editor_open',{id:item.id});
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  FAB
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const fabWrap = document.getElementById('fab-wrap');
+document.getElementById('fab-main').addEventListener('click', ()=>{
+  fabWrap.classList.toggle('open');
+});
+document.addEventListener('click', e=>{
+  if(!fabWrap.contains(e.target)) fabWrap.classList.remove('open');
+});
+
+function createAndOpenItem(type){
+  fabWrap.classList.remove('open');
+  const item = { id:newLibId(), type, label:'', content:'', createdAt:Date.now() };
+  addLibItem(item);
+  openLibItemEditor(item.id);
+  logUsage('fab_create',{type});
+}
+document.getElementById('fab-text'  ).addEventListener('click',()=>createAndOpenItem('text'));
+document.getElementById('fab-sketch').addEventListener('click',()=>createAndOpenItem('sketch'));
+document.getElementById('fab-voice' ).addEventListener('click',()=>createAndOpenItem('voice'));
+document.getElementById('fab-model' ).addEventListener('click',()=>createAndOpenItem('model'));
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  CANVAS DROP (card repositioning)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+canvasWrap.addEventListener('dragover',e=>{
+  if(state.dragCardKey){e.preventDefault();e.dataTransfer.dropEffect='move';}
+});
+canvasWrap.addEventListener('drop',e=>{
+  if(!state.dragCardKey||e.target.closest('.cell-wrapper')) return;
+  const from=state.dragCardKey; state.dragCardKey=null;
+  document.querySelectorAll('.card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+  const rect=canvasWrap.getBoundingClientRect();
+  const dropX=(e.clientX-rect.left-state.panX)/state.zoom;
+  const dropY=(e.clientY-rect.top -state.panY)/state.zoom;
+  const keys=Object.keys(state.cells);
+  let minR=Infinity,minC=Infinity;
+  keys.forEach(k=>{const[r,c]=k.split(',').map(Number);minR=Math.min(minR,r);minC=Math.min(minC,c);});
+  let bestKey=null,bestDist=Infinity;
+  keys.forEach(k=>{
+    if(k===from) return;
+    const[r,c]=k.split(',').map(Number);
+    const d=Math.hypot(dropX-((c-minC)*SLOT_W+CELL_W/2),dropY-((r-minR)*SLOT_H+CELL_H/2));
+    if(d<bestDist){bestDist=d;bestKey=k;}
+  });
+  if(!bestKey){rerender();return;}
+  const[br,bc]=bestKey.split(',').map(Number);
+  const dx=dropX-((bc-minC)*SLOT_W+CELL_W/2), dy=dropY-((br-minR)*SLOT_H+CELL_H/2);
+  const dir=Math.abs(dx)>=Math.abs(dy)?(dx>0?'right':'left'):(dy>0?'bottom':'top');
+  const target=neighbourKey(br,bc,dir);
+  const fromCell={...state.cells[from]};
+
+  // Snapshot grid origin before mutation
+  function gridMin(){
+    let mR=Infinity,mC=Infinity;
+    Object.keys(state.cells).forEach(k=>{
+      const[r,c]=k.split(',').map(Number);
+      mR=Math.min(mR,r); mC=Math.min(mC,c);
+    });
+    return{mR,mC};
+  }
+  const before=gridMin();
+
+  if(state.cells[target]){
+    state.cells[from]={...state.cells[target]};
+    state.cells[target]=fromCell;
+    logUsage('card_swap_bg',{from,to:target});
+  } else {
+    delete state.cells[from];
+    state.cells[target]=fromCell;
+    logUsage('card_move',{from,to:target});
+  }
+
+  // Compensate pan if grid origin shifted
+  const after=gridMin();
+  const dC=before.mC-after.mC, dR=before.mR-after.mR;
+  if(dC!==0) state.panX-=dC*SLOT_W*state.zoom;
+  if(dR!==0) state.panY-=dR*SLOT_H*state.zoom;
+
+  rerender();
+});
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  SAVE / LOAD / NEW
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function dlJSON(data,filename){
+  const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+}
+document.getElementById('btn-save').addEventListener('click',()=>{
+  dlJSON({cells:state.cells,library:state.library,savedAt:new Date().toISOString(),version:'1.4'},
+    `mathmodel-${Date.now()}.json`);
+  logUsage('workspace_save'); toast('Workspace saved');
+});
+document.getElementById('btn-load').addEventListener('click',()=>document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      state.cells=data.cells||{}; state.library=data.library||[];
+      // restore id counter
+      state.library.forEach(item=>{
+        const n=parseInt(item.id.replace('lib_',''));
+        if(n>=libIdCounter) libIdCounter=n+1;
+      });
+      state.selectedKey=null;
+      renderLibrary(); rerender(); centerView();
+      logUsage('workspace_load'); toast('Workspace loaded');
+    } catch(err){ toast('Error loading file'); }
+  };
+  reader.readAsText(f); e.target.value='';
+});
+document.getElementById('btn-new').addEventListener('click',()=>{
+  if(!confirm('Start a new workspace? All unsaved changes will be lost.')) return;
+  state.cells={}; state.library=[]; state.selectedKey=null; libIdCounter=1;
+  initCells(); renderLibrary(); rerender(); centerView();
+  logUsage('workspace_new'); toast('New workspace');
+});
+document.getElementById('btn-usage').addEventListener('click',()=>{
+  dlJSON(window.__usageLog,`mathmodel-usage-${Date.now()}.json`); toast('Usage log exported');
+});
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  PAN & ZOOM
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function updateTransform(){
+  canvasEl.style.transform=`translate(${state.panX}px,${state.panY}px) scale(${state.zoom})`;
+  document.getElementById('zoom-label').textContent=`${Math.round(state.zoom*100)}%`;
+}
+function cellBounds(){
+  let minR=Infinity,maxR=-Infinity,minC=Infinity,maxC=-Infinity;
+  for(const k of Object.keys(state.cells)){
+    const[r,c]=k.split(',').map(Number);
+    minR=Math.min(minR,r);maxR=Math.max(maxR,r);minC=Math.min(minC,c);maxC=Math.max(maxC,c);
+  }
+  return minR===Infinity?{minR:0,maxR:0,minC:0,maxC:0}:{minR,maxR,minC,maxC};
+}
+function centerView(){
+  const{minR,maxR,minC,maxC}=cellBounds();
+  const gw=(maxC-minC+1)*SLOT_W-CELL_GAP, gh=(maxR-minR+1)*SLOT_H-CELL_GAP;
+  const vw=canvasWrap.clientWidth, vh=canvasWrap.clientHeight;
+  state.zoom=Math.min(1,vw/(gw+80),vh/(gh+80));
+  state.panX=(vw-gw*state.zoom)/2; state.panY=(vh-gh*state.zoom)/2;
+  updateTransform();
+}
+let panning=false,panStart={x:0,y:0},panOrigin={x:0,y:0};
+canvasWrap.addEventListener('mousedown',e=>{
+  if((e.button!==0&&e.button!==1)||(e.button===0&&e.target.closest('.cell-wrapper'))) return;
+  panning=true; canvasWrap.classList.add('grabbing');
+  panStart={x:e.clientX,y:e.clientY}; panOrigin={x:state.panX,y:state.panY};
+  e.preventDefault();
+});
+window.addEventListener('mousemove',e=>{
+  if(!panning) return;
+  state.panX=panOrigin.x+(e.clientX-panStart.x);
+  state.panY=panOrigin.y+(e.clientY-panStart.y);
+  updateTransform();
+});
+window.addEventListener('mouseup',()=>{ panning=false; canvasWrap.classList.remove('grabbing'); });
+canvasWrap.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=e.deltaY<0?1.08:0.92;
+  const rect=canvasWrap.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const nz=Math.min(2,Math.max(.2,state.zoom*factor));
+  state.panX=mx-(mx-state.panX)*(nz/state.zoom);
+  state.panY=my-(my-state.panY)*(nz/state.zoom);
+  state.zoom=nz; updateTransform();
+},{passive:false});
+document.getElementById('zoom-in') .addEventListener('click',()=>{state.zoom=Math.min(2,state.zoom*1.15);updateTransform();});
+document.getElementById('zoom-out').addEventListener('click',()=>{state.zoom=Math.max(.2,state.zoom*.85);updateTransform();});
+document.getElementById('zoom-fit').addEventListener('click',centerView);
+
+// ── Touch drag-and-drop for card grid ─────────────────────────────────────
+// Tracks a library item being dragged via touch/pointer
+let _touchDragId=null;       // library item id being dragged
+let _touchDragEl=null;       // floating ghost element
+let _touchDragCardKey=null;  // card key being repositioned
+
+function makeTouchGhost(item){
+  const el=document.createElement('canvas');
+  el.width=84; el.height=80;
+  Object.assign(el.style,{
+    position:'fixed',pointerEvents:'none',zIndex:'9999',
+    borderRadius:'8px',opacity:'0.85',transform:'translate(-50%,-50%)'
+  });
+  const ctx=el.getContext('2d');
+  const col=item.type==='sketch'?'#B85C1A':item.type==='voice'?'#2A7A4B':item.type==='model'?'#7B3FA0':'#2D5A8E';
+  ctx.fillStyle='#fff'; ctx.fillRect(2,2,80,76);
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.strokeRect(2,2,80,76);
+  ctx.fillStyle=col; ctx.fillRect(2,2,80,9);
+  document.body.appendChild(el);
+  return el;
+}
+
+function moveTouchGhost(el, cx, cy){
+  el.style.left=cx+'px'; el.style.top=cy+'px';
+}
+
+function cardKeyAtPoint(cx, cy){
+  // Temporarily hide ghost so elementFromPoint works
+  if(_touchDragEl) _touchDragEl.style.display='none';
+  const el=document.elementFromPoint(cx,cy);
+  if(_touchDragEl) _touchDragEl.style.display='';
+  const card=el?.closest?.('.card');
+  return card?.dataset?.key||null;
+}
+
+// Wire up touch drag on library items — we use touchstart/touchmove/touchend
+// directly (not pointer events) for compatibility with iOS Safari
+function wireLibItemTouch(el, item){
+  let dragging=false;
+  el.addEventListener('touchstart', e=>{
+    if(e.touches.length!==1) return;
+    dragging=false;
+  },{passive:true});
+  el.addEventListener('touchmove', e=>{
+    if(e.touches.length!==1) return;
+    e.preventDefault();
+    const t=e.touches[0];
+    if(!dragging){
+      dragging=true;
+      _touchDragId=item.id;
+      _touchDragEl=makeTouchGhost(item);
+    }
+    moveTouchGhost(_touchDragEl,t.clientX,t.clientY);
+    // Highlight card underneath
+    const key=cardKeyAtPoint(t.clientX,t.clientY);
+    document.querySelectorAll('.card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+    if(key) document.querySelector(`.card[data-key="${key}"]`)?.classList.add('drop-target');
+  },{passive:false});
+  el.addEventListener('touchend', e=>{
+    document.querySelectorAll('.card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+    if(!dragging||!_touchDragEl){ _touchDragId=null; return; }
+    const t=e.changedTouches[0];
+    const key=cardKeyAtPoint(t.clientX,t.clientY);
+    document.body.removeChild(_touchDragEl);
+    _touchDragEl=null;
+    const id=_touchDragId; _touchDragId=null;
+    if(key){
+      state.cells[key].libraryItemId=id;
+      const _tli=getLibItem(id);
+      if(_tli?.label) state.cells[key].title=_tli.label;
+      logUsage('lib_item_assigned_touch',{cardKey:key,itemId:id});
+      rerender();
+    }
+  });
+}
+
+// Touch-based card repositioning
+function wireCardTouch(card, key){
+  let dragging=false, ghost=null;
+  card.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1) return;
+    dragging=false;
+  },{passive:true});
+  card.addEventListener('touchmove',e=>{
+    if(e.touches.length!==1||_touchDragId) return;
+    e.preventDefault();
+    const t=e.touches[0];
+    if(!dragging){
+      dragging=true;
+      _touchDragCardKey=key;
+      const item=state.cells[key]?.libraryItemId?getLibItem(state.cells[key].libraryItemId):null;
+      ghost=item?makeTouchGhost(item):makeTouchGhost({type:'text'});
+    }
+    moveTouchGhost(ghost,t.clientX,t.clientY);
+    const hk=cardKeyAtPoint(t.clientX,t.clientY);
+    document.querySelectorAll('.card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+    if(hk&&hk!==key) document.querySelector(`.card[data-key="${hk}"]`)?.classList.add('drop-target');
+  },{passive:false});
+  card.addEventListener('touchend',e=>{
+    document.querySelectorAll('.card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+    if(!dragging||!ghost){ _touchDragCardKey=null; return; }
+    const t=e.changedTouches[0];
+    const targetKey=cardKeyAtPoint(t.clientX,t.clientY);
+    document.body.removeChild(ghost); ghost=null;
+    const fromKey=_touchDragCardKey; _touchDragCardKey=null;
+    if(targetKey&&targetKey!==fromKey){
+      const a={...state.cells[fromKey]}, b={...state.cells[targetKey]};
+      state.cells[fromKey]=b; state.cells[targetKey]=a;
+      logUsage('card_swap_touch',{from:fromKey,to:targetKey});
+      rerender();
+    }
+  });
+}
+
+// Canvas pan via touch (single finger on blank canvas area)
+let _canvasTouchPan=null;
+canvasWrap.addEventListener('touchstart',e=>{
+  if(e.touches.length!==1) return;
+  const t=e.touches[0];
+  if(t.target.closest('.cell-wrapper')) return; // let card handle it
+  _canvasTouchPan={sx:t.clientX,sy:t.clientY,ox:state.panX,oy:state.panY};
+},{passive:true});
+canvasWrap.addEventListener('touchmove',e=>{
+  if(!_canvasTouchPan||e.touches.length!==1) return;
+  e.preventDefault();
+  const t=e.touches[0];
+  state.panX=_canvasTouchPan.ox+(t.clientX-_canvasTouchPan.sx);
+  state.panY=_canvasTouchPan.oy+(t.clientY-_canvasTouchPan.sy);
+  updateTransform();
+},{passive:false});
+canvasWrap.addEventListener('touchend',()=>{ _canvasTouchPan=null; });
+
+// Pinch-to-zoom on canvas
+let _pinchDist=null;
+canvasWrap.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){
+    const dx=e.touches[0].clientX-e.touches[1].clientX;
+    const dy=e.touches[0].clientY-e.touches[1].clientY;
+    _pinchDist=Math.hypot(dx,dy);
+    _canvasTouchPan=null; // cancel pan
+  }
+},{passive:true});
+canvasWrap.addEventListener('touchmove',e=>{
+  if(e.touches.length!==2||_pinchDist===null) return;
+  e.preventDefault();
+  const dx=e.touches[0].clientX-e.touches[1].clientX;
+  const dy=e.touches[0].clientY-e.touches[1].clientY;
+  const dist=Math.hypot(dx,dy);
+  const factor=dist/_pinchDist; _pinchDist=dist;
+  const rect=canvasWrap.getBoundingClientRect();
+  const mx=(e.touches[0].clientX+e.touches[1].clientX)/2-rect.left;
+  const my=(e.touches[0].clientY+e.touches[1].clientY)/2-rect.top;
+  const nz=Math.min(2,Math.max(.2,state.zoom*factor));
+  state.panX=mx-(mx-state.panX)*(nz/state.zoom);
+  state.panY=my-(my-state.panY)*(nz/state.zoom);
+  state.zoom=nz; updateTransform();
+},{passive:false});
+canvasWrap.addEventListener('touchend',()=>{ _pinchDist=null; });
+
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  TOAST
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+let toastTimer;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>el.classList.remove('show'),2400);
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  KEYBOARD
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+document.addEventListener('keydown',e=>{
+  if(overlay.classList.contains('open')) return;
+  if(e.key==='Escape'){
+    state.selectedKey=null;
+    document.querySelectorAll('.card.selected').forEach(c=>c.classList.remove('selected'));
+    fabWrap.classList.remove('open');
+  }
+  if(e.key==='Delete'&&state.selectedKey&&document.activeElement?.className!=='card-title-input')
+    deleteCell(state.selectedKey);
+  if(e.ctrlKey&&e.key==='+'){state.zoom=Math.min(2,state.zoom*1.15);updateTransform();e.preventDefault();}
+  if(e.ctrlKey&&e.key==='-'){state.zoom=Math.max(.2,state.zoom*.85);updateTransform();e.preventDefault();}
+});
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  INIT
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+renderLibrary();
+rerender();
+setTimeout(centerView,50);
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+//  3D EDITOR  (Three.js)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// â”€â”€ Card preview: one tiny Three.js scene per model card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function initModelPreviews(){
+  document.querySelectorAll('.card-model-preview[data-model-id]').forEach(container=>{
+    const item = getLibItem(container.dataset.modelId);
+    if(!item || !item.shapes || !item.shapes.length) return;
+    startModelPreview(container, item.shapes);
+  });
+}
+
+function startModelPreview(container, shapes){
+  const W = container.clientWidth  || 200;
+  const H = container.clientHeight || 120;
+
+  const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.shadowMap.enabled = true;
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xe8eef7);
+
+  const camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 100);
+  camera.position.set(4,3,5);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  dLight.position.set(5,8,5); scene.add(dLight);
+
+  buildSceneMeshes(scene, shapes);
+
+  // Static preview – render once, no animation loop
+  camera.lookAt(0,0,0);
+  renderer.render(scene, camera);
+  // disposer: stop loop + free GPU memory when card is re-rendered
+  window._modelPreviewDisposers = window._modelPreviewDisposers || [];
+  window._modelPreviewDisposers.push(()=>{
+    renderer.domElement.remove();
+    renderer.dispose();
+    scene.traverse(obj=>{ if(obj.geometry) obj.geometry.dispose(); if(obj.material) obj.material.dispose(); });
+  });
+}
+
+// â”€â”€ Build Three.js meshes from shapes array â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function buildSceneMeshes(scene, shapes){
+  shapes.forEach(s=>{
+    let geo;
+    if(s.kind === 'box')    geo = new THREE.BoxGeometry(s.sx||1, s.sy||1, s.sz||1);
+    else                    geo = new THREE.SphereGeometry((s.r||0.5), 32, 24);
+    const mat = new THREE.MeshLambertMaterial({color: s.color || 0x2D5A8E});
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(s.x||0, s.y||0, s.z||0);
+    mesh.castShadow = true;
+    scene.add(mesh);
+  });
+  // light semi-transparent grid
+  const previewGrid = new THREE.GridHelper(10, 10, 0xaabbcc, 0xccddee);
+  previewGrid.material.transparent = true;
+  previewGrid.material.opacity = 0.5;
+  scene.add(previewGrid);
+}
+
+// â”€â”€ Render thumbnail PNG from shapes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function renderModelThumbnail(shapes){
+  const W=300, H=200;
+  const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+  renderer.setSize(W,H);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xe8eef7);
+  const camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 100);
+  camera.position.set(5,4,6); camera.lookAt(0,0,0);
+  scene.add(new THREE.AmbientLight(0xffffff,0.6));
+  const dl=new THREE.DirectionalLight(0xffffff,0.9); dl.position.set(5,8,5); scene.add(dl);
+  const thumbGrid = new THREE.GridHelper(10,10,0xaabbcc,0xccddee);
+  thumbGrid.material.transparent = true; thumbGrid.material.opacity = 0.5;
+  scene.add(thumbGrid);
+  buildSceneMeshes(scene,shapes);
+  renderer.render(scene,camera);
+  const dataUrl = renderer.domElement.toDataURL('image/png');
+  renderer.dispose();
+  return dataUrl;
+}
+
+// â”€â”€ 3D EDITOR MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function open3DEditor(item){
+  if(!item.shapes) item.shapes = [];
+  let shapes = JSON.parse(JSON.stringify(item.shapes)); // working copy
+  let selectedIdx = null;
+  let _gizmoMode = 'translate'; // 'translate' | 'rotate'
+  let renderer3d = null, scene3d = null, camera3d = null, controls3d = null;
+  let meshes = [];
+
+
+  modalBody.innerHTML =
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+    '<label style="font-size:12px;font-weight:600;color:var(--text2)">Label</label>' +
+    '<input id="item-label" type="text" maxlength="60" placeholder="Name this model" ' +
+    'style="flex:1;padding:5px 10px;border-radius:6px;border:1.5px solid var(--border-soft);font-family:var(--font-sans);font-size:13px;outline:none;background:var(--bg)" ' +
+    'value="' + (item.label||'').replace(/"/g,'&quot;') + '">' +
+    '</div>' +
+    '<div id="editor3d-wrap">' +
+      '<div id="editor3d-sidebar">' +
+        '<div id="editor3d-sidebar-top">' +
+          '<p>Add shape</p>' +
+          '<div class="shape-add-btn-wrap">' +
+          '<button class="shape-add-btn" id="add-box" title="Add Cuboid"><svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="cgt" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#ddeeff"/><stop offset="100%" stop-color="#aaccee"/></linearGradient><linearGradient id="cgr" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#6699cc"/><stop offset="100%" stop-color="#2255aa"/></linearGradient><linearGradient id="cgl" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#3366aa"/><stop offset="100%" stop-color="#112244"/></linearGradient></defs><polygon points="14,3 24,8 14,13 4,8" fill="url(#cgt)"/><polygon points="24,8 24,20 14,25 14,13" fill="url(#cgr)"/><polygon points="4,8 14,13 14,25 4,20" fill="url(#cgl)"/></svg></button>' +
+          '<button class="shape-add-btn" id="add-sphere" title="Add Sphere"><svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="sg" cx="38%" cy="35%" r="60%"><stop offset="0%" stop-color="#ffbbbb"/><stop offset="100%" stop-color="#cc2222"/></radialGradient></defs><g transform="translate(1.4, 1.4) scale(0.9)"><circle cx="14" cy="14" r="11" fill="url(#sg)" stroke="#cc2222" stroke-width="1"/><ellipse cx="11" cy="10" rx="4" ry="2.5" fill="white" fill-opacity="0.35" transform="rotate(-30,11,10)"/></g></svg></button>' +          '<button class="shape-add-btn" id="add-cylinder" title="Add Cylinder"><svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="cylg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#226622"/><stop offset="40%" stop-color="#88dd88"/><stop offset="100%" stop-color="#336633"/></linearGradient></defs><g transform="translate(-2.8, -5.4) scale(1.2)"><path d="M 7 9 H 21 V 23 A 7 2.5 0 0 1 7 23 Z" fill="url(#cylg)"/><ellipse cx="14" cy="9" rx="7" ry="2.5" fill="#aaeebb"/><ellipse cx="12" cy="8" rx="3" ry="1.2" fill="white" fill-opacity="0.4"/></g></svg></button>' +
+          '<button class="shape-add-btn" id="add-pyramid" title="Add Pyramid"><svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="pyrg" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#ffcc44"/><stop offset="100%" stop-color="#cc7700"/></linearGradient><linearGradient id="pyrd" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#cc7700"/><stop offset="100%" stop-color="#883300"/></linearGradient></defs><g transform="translate(-1.4, -1.4) scale(1.1)"><polygon points="14,3 4,21 14,25" fill="url(#pyrg)"/><polygon points="14,3 24,21 14,25" fill="url(#pyrd)"/></g></svg></button>' +
+          '<button class="shape-add-btn" id="add-prism" title="Add Prism"><svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="pril" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#cc99ff"/><stop offset="100%" stop-color="#8844cc"/></linearGradient><linearGradient id="prig" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#9955cc"/><stop offset="100%" stop-color="#551177"/></linearGradient></defs><g transform="translate(0, -2)"><polygon points="4,5 14,10 14,27 4,22" fill="url(#pril)"/><polygon points="14,10 24,5 24,22 14,27" fill="url(#prig)"/><polygon points="4,5 24,5 14,10" fill="#eeddff"/></g></svg></button>' +
+          '<button class="shape-add-btn" id="add-cone" title="Add Cone"><svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="conegr" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#006677"/><stop offset="40%" stop-color="#00CCCC"/><stop offset="100%" stop-color="#005566"/></linearGradient></defs><path d="M 14 3 L 5 23 A 9 3 0 0 0 14 26 A 9 3 0 0 0 23 23 Z" fill="url(#conegr)"/><polygon points="14,3 9,23 14,20" fill="rgba(0,100,100,0.2)"/><ellipse cx="12" cy="10" rx="3" ry="1.5" fill="white" fill-opacity="0.35" transform="rotate(-30,12,10)"/></svg></button>' +
+          '</div>' +
+        '</div>' +
+        
+      '</div>' +
+      '<div id="editor3d-canvas-wrap"><canvas id="editor3d-canvas"></canvas>' +
+        '<div id="editor3d-hint">Orbit: drag · Zoom: scroll · Select: click</div>' +
+      '</div>' +
+      '<div id="editor3d-props">' +
+        '<h3>Properties</h3>' +
+        '<div id="editor3d-empty-props">Select a shape to edit its properties.</div>' +
+        '<div id="editor3d-prop-fields" style="display:none">' +
+          '<div class="prop-group" id="prop-rotation-group"><label>Rotation</label>'+'<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#cc2222">X °</span><span class="prop-field-val" id="prop-rx-display">–</span></div><input class="prop-input" id="prop-rx" type="number" step="1" min="-180" max="180"></div>'+'<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#228822">Y °</span><span class="prop-field-val" id="prop-ry-display">–</span></div><input class="prop-input" id="prop-ry" type="number" step="1" min="-180" max="180"></div>'+'<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#2266cc">Z °</span><span class="prop-field-val" id="prop-rz-display">–</span></div><input class="prop-input" id="prop-rz" type="number" step="1" min="-180" max="180"></div>'+'</div>'+'<div class="prop-group"><label>Position</label><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#cc2222">X Position</span><span class="prop-field-val" id="prop-px-display">–</span></div><input class="prop-input" id="prop-px" type="number" step="0.1" min="-3" max="3"></div><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#228822">Y Position</span><span class="prop-field-val" id="prop-py-display">–</span></div><input class="prop-input" id="prop-py" type="number" step="0.1" min="-3" max="3"></div><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#2266cc">Z Position</span><span class="prop-field-val" id="prop-pz-display">–</span></div><input class="prop-input" id="prop-pz" type="number" step="0.1" min="-3" max="3"></div></div>' +
+          '<div class="prop-group" id="prop-box-group"><label>Size</label><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Width</span><span class="prop-field-val" id="prop-sx-display">–</span></div><input class="prop-input" id="prop-sx" type="number" step="0.1" min="0.1" max="3"></div><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Height</span><span class="prop-field-val" id="prop-sy-display">–</span></div><input class="prop-input" id="prop-sy" type="number" step="0.1" min="0.1" max="3"></div><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Depth</span><span class="prop-field-val" id="prop-sz-display">–</span></div><input class="prop-input" id="prop-sz" type="number" step="0.1" min="0.1" max="3"></div></div>' +
+          '<div class="prop-group" id="prop-sphere-group" style="display:none"><label>Radius</label><div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Radius</span><span class="prop-field-val" id="prop-r-display">–</span></div><input class="prop-input" id="prop-r" type="number" step="0.1" min="0.1" max="3"></div></div>' +
+          '<div class="prop-group"><label>Colour</label>' +
+            '<div class="prop-swatches" id="prop-swatches"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  const origShapes = JSON.parse(JSON.stringify(item.shapes));
+  const origLabel  = item.label || '';
+
+  function doSave(){
+    item.shapes = JSON.parse(JSON.stringify(shapes));
+    item.label  = document.getElementById('item-label').value || '3D Model';
+    item.content = renderModelThumbnail(shapes);
+    teardown3d();
+    closeModal(); renderLibrary(); rerender();
+    logUsage('model_save',{id:item.id, shapeCount:shapes.length, durationMs:Date.now()-_modelOpenedAt}); toast('Saved');
+  }
+  function doDiscard(){
+    item.shapes = origShapes; item.label = origLabel;
+    logUsage('model_discard',{id:item.id, durationMs:Date.now()-_modelOpenedAt});
+    teardown3d(); closeModal();
+  }
+  state._saveAndClose = doSave;
+
+  modalFooter.innerHTML =
+    `<button class="btn btn-primary" id="save-model">${ico('check')}Save</button>` +
+    '<button class="btn btn-ghost btn-danger-soft" id="discard-model">Discard changes</button>';
+  openModal();
+
+  // â”€â”€ Init Three.js â”€â”€
+  const canvasWrap3d = document.getElementById('editor3d-canvas-wrap');
+  const canvas3d     = document.getElementById('editor3d-canvas');
+  const W = canvasWrap3d.clientWidth  || 440;
+  const H = canvasWrap3d.clientHeight || 480;
+
+  renderer3d = new THREE.WebGLRenderer({canvas: canvas3d, antialias:true});
+  renderer3d.setSize(W, H);
+  renderer3d.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer3d.shadowMap.enabled = true;
+  renderer3d.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  scene3d = new THREE.Scene();
+  scene3d.background = new THREE.Color(0xe8eef7);
+  scene3d.fog = new THREE.FogExp2(0xe8eef7, 0.03);
+
+  camera3d = new THREE.PerspectiveCamera(45, W/H, 0.1, 200);
+  // Zoom out + low elevation so grid base appears parallel to viewport bottom
+  camera3d.position.set(0, 9, 22);
+  camera3d.lookAt(0, 0, 0);
+
+  controls3d = new OrbitControls(camera3d, renderer3d.domElement);
+  controls3d.enableDamping = true;
+  controls3d.dampingFactor = 0.08;
+  controls3d.rotateSpeed = 0.5;
+  controls3d.minDistance = 1;
+  controls3d.maxDistance = 60;
+  controls3d.target.set(0, 0, 0);
+  controls3d.update();
+
+  // Lights
+  scene3d.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  sunLight.position.set(8,12,8); sunLight.castShadow = true;
+  sunLight.shadow.mapSize.width = sunLight.shadow.mapSize.height = 1024;
+  scene3d.add(sunLight);
+  scene3d.add(new THREE.HemisphereLight(0x8888cc, 0x444422, 0.4));
+
+  // Grid + semi-transparent light-blue work plane
+  scene3d.add(new THREE.GridHelper(20, 20, 0x6699cc, 0x99bbdd));
+  const groundGeo = new THREE.PlaneGeometry(20,20);
+  const groundMat = new THREE.MeshBasicMaterial({
+    color: 0xaaccee, transparent: true, opacity: 0.35,
+    side: THREE.DoubleSide, depthWrite: false
+  });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+  scene3d.add(ground);
+
+  // â”€â”€ Mesh management â”€â”€
+  let axisArrows   = []; // gizmo arrow/ring groups
+  let scaleHandles = []; // corner cube handles (always shown when selected)
+  function clearArrows(){
+    axisArrows.forEach(g=>{
+      (g._visuals||[]).forEach(v=>{ scene3d.remove(v); v.geometry.dispose(); v.material.dispose(); });
+      (g._proxies||[]).forEach(p=>{ scene3d.remove(p); p.geometry.dispose(); p.material.dispose(); });
+    });
+    axisArrows = [];
+  }
+  function clearScaleHandles(){
+    scaleHandles.forEach(h=>{
+      (h._visuals||[]).forEach(v=>{ scene3d.remove(v); v.geometry.dispose(); v.material.dispose(); });
+      if(h._proxy){ scene3d.remove(h._proxy); h._proxy.geometry.dispose(); h._proxy.material.dispose(); }
+    });
+    scaleHandles = [];
+  }
+  function rebuildMeshes(){
+    meshes.forEach(m=>{ scene3d.remove(m); m.geometry.dispose(); m.material.dispose(); });
+    meshes = [];
+    clearArrows();
+    clearScaleHandles();
+    shapes.forEach((s,i)=>{
+      let geo;
+      if(s.kind==='box') geo = new THREE.BoxGeometry(s.sx||1, s.sy||1, s.sz||1);
+      else               geo = new THREE.SphereGeometry(s.r||0.5, 32, 24);
+      const col = parseInt((s.color||'#2D5A8E').replace('#',''), 16);
+      const mat = new THREE.MeshLambertMaterial({ color: col });
+      const mesh = new THREE.Mesh(geo, mat);
+      // s.x/y/z = −X/−Y/−Z corner; mesh centre = corner + half-extents
+      const sW_r = s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
+      const sH_r = s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
+      const sD_r = s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+      mesh.position.set((s.x||0)+sW_r*0.5, (s.y||0)+sH_r*0.5, (s.z||0)+sD_r*0.5);
+      mesh.rotation.set(
+        (s.rx||0)*Math.PI/180,
+        (s.ry||0)*Math.PI/180,
+        (s.rz||0)*Math.PI/180
+      );
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.userData.shapeIdx = i;
+      scene3d.add(mesh); meshes.push(mesh);
+
+      // Edge highlight: lighter version of the object colour
+      const r=(col>>16)&0xff, g=(col>>8)&0xff, b=col&0xff;
+      const lr=Math.round(r+(255-r)*0.55);
+      const lg=Math.round(g+(255-g)*0.55);
+      const lb=Math.round(b+(255-b)*0.55);
+      const edgeCol=(lr<<16)|(lg<<8)|lb;
+      if(s.kind==='box'){
+        const edgeMat = new THREE.LineBasicMaterial({color:edgeCol});
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+        edges.position.copy(mesh.position);
+        edges.rotation.copy(mesh.rotation);
+        edges.raycast = ()=>{};
+        scene3d.add(edges); meshes.push(edges);
+      }
+    });
+    // Draw mode-aware gizmos on selected object
+    if(selectedIdx !== null && selectedIdx < shapes.length){
+      const s = shapes[selectedIdx];
+      const sW = s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
+      const sH = s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
+      const sD = s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+      const pos = new THREE.Vector3(
+        (s.x||0)+sW*0.5, (s.y||0)+sH*0.5, (s.z||0)+sD*0.5);
+      const extX = s.kind==='box' ? (s.sx||1)*0.5+0.6 : (s.r||0.5)+0.6;
+      const extY = s.kind==='box' ? (s.sy||1)*0.5+0.6 : (s.r||0.5)+0.6;
+      const extZ = s.kind==='box' ? (s.sz||1)*0.5+0.6 : (s.r||0.5)+0.6;
+      const axisDefs = [
+        {dir:new THREE.Vector3(1,0,0), len:extX, col:0xff3333, axisName:'x'},
+        {dir:new THREE.Vector3(0,1,0), len:extY, col:0x33cc33, axisName:'y'},
+        {dir:new THREE.Vector3(0,0,1), len:extZ, col:0x3399ff, axisName:'z'},
+      ];
+
+      // ── Always-on scale handles ─────────────────────────────────────────
+      // s.x/s.z = −X/−Z corner; rectangle spans to x1/z1
+      const halfW=sW*0.5, halfD=sD*0.5;
+      const x0=s.x||0, z0=s.z||0, x1=x0+sW, z1=z0+sD;
+      const midX=x0+halfW, midZ=z0+halfD;
+      const shapeCol=parseInt((s.color||'#2D5A8E').replace('#',''),16);
+
+      // Rect 1 – solid outline at Y=0 (working plane)
+      (()=>{
+        const pts=[
+          new THREE.Vector3(x0,0,z0),new THREE.Vector3(x1,0,z0),
+          new THREE.Vector3(x1,0,z1),new THREE.Vector3(x0,0,z1),
+          new THREE.Vector3(x0,0,z0),
+        ];
+        const solidLine=new THREE.Line(
+          new THREE.BufferGeometry().setFromPoints(pts),
+          new THREE.LineBasicMaterial({color:shapeCol,linewidth:2})
+        );
+        scene3d.add(solidLine);
+        scaleHandles.push({_visuals:[solidLine],_proxy:null});
+      })();
+
+      // Rect 2 – dashed outline at bottom face
+      const bottomY=s.y||0;
+      (()=>{
+        const pts=[
+          new THREE.Vector3(x0,bottomY,z0),new THREE.Vector3(x1,bottomY,z0),
+          new THREE.Vector3(x1,bottomY,z1),new THREE.Vector3(x0,bottomY,z1),
+          new THREE.Vector3(x0,bottomY,z0),
+        ];
+        const mat=new THREE.LineDashedMaterial({color:shapeCol,linewidth:1,dashSize:0.18,gapSize:0.10,depthTest:false});
+        const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),mat);
+        line.computeLineDistances(); line.renderOrder=1;
+        scene3d.add(line);
+        scaleHandles.push({_visuals:[line],_proxy:null});
+      })();
+
+      // 4 black cubic corner handles — anchor = diagonally opposite corner
+      const HSIZE=0.13;
+      [{cx:x0,cz:z0,ax:x1,az:z1},{cx:x1,cz:z0,ax:x0,az:z1},
+       {cx:x1,cz:z1,ax:x0,az:z0},{cx:x0,cz:z1,ax:x1,az:z0}].forEach(({cx,cz,ax,az})=>{
+        const visMat=new THREE.MeshLambertMaterial({color:0x111111,depthTest:false});
+        const vis=new THREE.Mesh(new THREE.BoxGeometry(HSIZE,HSIZE,HSIZE),visMat);
+        vis.position.set(cx,bottomY,cz); vis.raycast=()=>{};
+        vis.renderOrder=2; scene3d.add(vis);
+        const proxy=new THREE.Mesh(
+          new THREE.BoxGeometry(HSIZE*2.2,HSIZE*2.2,HSIZE*2.2),
+          new THREE.MeshBasicMaterial({visible:false}));
+        proxy.position.set(cx,bottomY,cz);
+        proxy.userData={isScaleHandle:true, anchorX:ax, anchorZ:az,
+          isSphere:s.kind==='sphere'};
+        scene3d.add(proxy);
+        scaleHandles.push({_visuals:[vis],_proxy:proxy,setColor(c){visMat.color.setHex(c);}});
+      });
+
+      // Height handle – dashed vertical line + black cube at top of object
+      const topY=(s.y||0)+sH;
+      (()=>{
+        // Dashed line from rect midpoint to top of object
+        const pts=[new THREE.Vector3(midX,bottomY,midZ), new THREE.Vector3(midX,topY,midZ)];
+        const mat=new THREE.LineDashedMaterial({color:shapeCol,linewidth:1,dashSize:0.12,gapSize:0.07,depthTest:false});
+        const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),mat);
+        line.computeLineDistances(); line.renderOrder=1;
+        scene3d.add(line);
+        scaleHandles.push({_visuals:[line],_proxy:null});
+      })();
+      (()=>{
+        const visMat=new THREE.MeshLambertMaterial({color:0x111111,depthTest:false});
+        const vis=new THREE.Mesh(new THREE.BoxGeometry(HSIZE,HSIZE,HSIZE),visMat);
+        vis.position.set(midX,topY,midZ); vis.raycast=()=>{};
+        vis.renderOrder=2; scene3d.add(vis);
+        const proxy=new THREE.Mesh(
+          new THREE.BoxGeometry(HSIZE*2.2,HSIZE*2.2,HSIZE*2.2),
+          new THREE.MeshBasicMaterial({visible:false}));
+        proxy.position.set(midX,topY,midZ);
+        proxy.userData={isHeightHandle:true,
+          startTopY:topY, startH: s.kind==='box'?(s.sy||1):(s.r||0.5)*2};
+        scene3d.add(proxy);
+        scaleHandles.push({_visuals:[vis],_proxy:proxy,
+          setColor(c){visMat.color.setHex(c);}});
+      })();
+
+      // ── Mode-specific gizmos ─────────────────────────────────────────────
+      if(_gizmoMode==='translate'){
+        // Only the Y (height) handle — X and Z movement is done by dragging the body
+        const yDef=axisDefs.find(d=>d.axisName==='y');
+        (({dir,len,axisName})=>{
+          const BLACK=0x111111;
+          const mat=new THREE.MeshLambertMaterial({color:BLACK});
+          const CONE_H=0.27, CONE_R=0.105, shaftLen=len-CONE_H;
+          const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,shaftLen,8),mat);
+          shaft.position.copy(pos).addScaledVector(dir,shaftLen*0.5);
+          shaft.raycast=()=>{}; scene3d.add(shaft);
+          const cone=new THREE.Mesh(new THREE.CylinderGeometry(0,CONE_R,CONE_H,12),mat);
+          cone.position.copy(pos).addScaledVector(dir,shaftLen+CONE_H*0.5);
+          cone.raycast=()=>{}; scene3d.add(cone);
+          const proxy=new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09,0.09,CONE_H*1.4,6),
+            new THREE.MeshBasicMaterial({visible:false}));
+          proxy.position.copy(pos).addScaledVector(dir,shaftLen+CONE_H*0.5);
+          proxy.userData={isGizmo:true,arrowIdx:0,axisName};
+          scene3d.add(proxy);
+          axisArrows.push({_visuals:[shaft,cone],_proxies:[proxy],_col:BLACK,
+            setColor(c){mat.color.setHex(c);}});
+        })(yDef);
+      } else {
+        // Rotate: torus rings
+        const RING_R=Math.max(extX,extY,extZ)*1.05, TUBE_R=0.045, PROXY_R=0.11, SEG=64;
+        axisDefs.forEach(({col,axisName},ai)=>{
+          const visMat=new THREE.MeshLambertMaterial({color:col,side:THREE.DoubleSide});
+          const ring=new THREE.Mesh(new THREE.TorusGeometry(RING_R,TUBE_R,12,SEG),visMat);
+          const proxy=new THREE.Mesh(
+            new THREE.TorusGeometry(RING_R,PROXY_R,6,SEG),
+            new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide}));
+          if(axisName==='x'){ring.rotation.y=Math.PI/2; proxy.rotation.y=Math.PI/2;}
+          if(axisName==='y'){ring.rotation.x=Math.PI/2; proxy.rotation.x=Math.PI/2;}
+          ring.position.copy(pos); ring.raycast=()=>{};
+          proxy.position.copy(pos); proxy.userData={isGizmo:true,arrowIdx:ai,axisName};
+          scene3d.add(ring); scene3d.add(proxy);
+          axisArrows.push({_visuals:[ring],_proxies:[proxy],_col:col,
+            setColor(c){visMat.color.setHex(c);}});
+        });
+      }
+    }
+  }
+  rebuildMeshes();
+
+  // Properties panel
+  function setField(id, val){
+    const num  = document.getElementById(id);
+    const disp = document.getElementById(id+'-display');
+    const v = parseFloat(val.toFixed(2));
+    if(num)  num.value = v;
+    if(disp) disp.textContent = v;
+  }
+  function renderProps(){
+    const empty  = document.getElementById('editor3d-empty-props');
+    const fields = document.getElementById('editor3d-prop-fields');
+    if(selectedIdx===null || selectedIdx>=shapes.length){
+      empty.style.display=''; fields.style.display='none'; return;
+    }
+    empty.style.display='none'; fields.style.display='';
+    const s = shapes[selectedIdx];
+    setField('prop-rx', s.rx||0);
+    setField('prop-ry', s.ry||0);
+    setField('prop-rz', s.rz||0);
+    setField('prop-px', s.x||0);
+    setField('prop-py', s.y||0);
+    setField('prop-pz', s.z||0);
+    document.getElementById('prop-box-group').style.display    = s.kind==='box'   ?'':'none';
+    document.getElementById('prop-sphere-group').style.display = s.kind==='sphere'?'':'none';
+    if(s.kind==='box'){
+      setField('prop-sx', s.sx||1);
+      setField('prop-sy', s.sy||1);
+      setField('prop-sz', s.sz||1);
+    } else {
+      setField('prop-r', s.r||0.5);
+    }
+    const SWATCH_COLORS = [
+    // red        green      blue       orange     violet     yellow     grey
+      '#cc2222', '#22882a', '#2255cc', '#cc6600', '#7722bb', '#ccaa00', '#444444', 
+      '#ff8888', '#88dd88', '#88aaff', '#ffaa55', '#cc88ff', '#ffee66', '#cccccc'
+    ];
+    const swatchWrap = document.getElementById('prop-swatches');
+    if(swatchWrap){
+      swatchWrap.innerHTML = '';
+      SWATCH_COLORS.forEach(hex=>{
+        const sw = document.createElement('div');
+        sw.className = 'prop-swatch' + (s.color===hex?' active':'');
+        sw.style.background = hex;
+        sw.title = hex;
+        sw.addEventListener('click',()=>{
+          if(selectedIdx===null) return;
+          shapes[selectedIdx].color = hex;
+          logUsage('model_property_change',{id:item.id, shapeIdx:selectedIdx, property:'color', value:hex});
+          rebuildMeshes();
+          swatchWrap.querySelectorAll('.prop-swatch').forEach(el=>
+            el.classList.toggle('active', el.title===hex));
+        });
+        swatchWrap.appendChild(sw);
+      });
+    }
+  }
+
+  // Prop input/slider shape update (number and slider stay in sync)
+  // debounce helper for property change logging
+  const _propLogTimers = {};
+  function bindProp(id, key){
+    const num  = document.getElementById(id);
+    const disp = document.getElementById(id+'-display');
+    function apply(val){
+      if(selectedIdx===null) return;
+      const v = parseFloat(val)||0;
+      shapes[selectedIdx][key] = v;
+      if(num)  num.value        = v;
+      if(disp) disp.textContent = v.toFixed(2);
+      rebuildMeshes();
+      clearTimeout(_propLogTimers[key]);
+      _propLogTimers[key] = setTimeout(()=>{
+        if(selectedIdx===null) return;
+        logUsage('model_property_change',{id:item.id, shapeIdx:selectedIdx, property:key, value:v});
+      }, 600);
+    }
+    if(num) num.addEventListener('input', ()=>apply(num.value));
+  }
+  bindProp('prop-rx','rx'); bindProp('prop-ry','ry'); bindProp('prop-rz','rz');
+  bindProp('prop-px','x'); bindProp('prop-py','y'); bindProp('prop-pz','z');
+  bindProp('prop-sx','sx'); bindProp('prop-sy','sy'); bindProp('prop-sz','sz');
+  bindProp('prop-r','r');
+  // colour changes are logged inline in the swatch click handler (see renderProps)
+
+  // â”€â”€ Add shape buttons â”€â”€
+  document.getElementById('add-box').addEventListener('click',()=>{
+    shapes.push({kind:'box', x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, color:'#2255cc'});
+    selectedIdx = shapes.length-1; _gizmoMode='translate';
+    logUsage('model_shape_add',{id:item.id, kind:'box', shapeCount:shapes.length});
+    rebuildMeshes(); renderProps();
+  });
+  document.getElementById('add-sphere').addEventListener('click',()=>{
+    shapes.push({kind:'sphere', x:-0.5, y:0, z:-0.5, r:0.5, color:'#cc2222'});
+    selectedIdx = shapes.length-1; _gizmoMode='translate';
+    logUsage('model_shape_add',{id:item.id, kind:'sphere', shapeCount:shapes.length});
+    rebuildMeshes(); renderProps();
+  });
+  ['add-cylinder','add-pyramid','add-prism','add-cone'].forEach(id=>{
+    document.getElementById(id).addEventListener('click',()=>toast('Coming soon'));
+  });
+
+  // â”€â”€ Interaction: select + axis-gizmo drag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const raycaster = new THREE.Raycaster();
+
+  // â”€â”€ Gizmo state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  let _gizmoDrag    = null;   // active translate/rotate drag
+  let _scaleDrag    = null;   // active corner-handle scale drag
+  let _meshDrag     = null;   // active body-drag: move object in XZ
+  let _hoveredArrow = null;   // arrowIdx for hover highlight
+  let _mouseDownPos = null;   // to distinguish click vs drag
+  let _lastTouch    = null;   // previous touch pos for movementX/Y
+
+  // Arrow base colours (match the build step)
+  const ARROW_COLORS = [0x111111, 0x33cc33, 0x3399ff]; // [0]=Y translate (black), [1][2]=rotate rings
+  const ARROW_HOVER  = [0x555555, 0x77ee77, 0x77bbff];
+
+  // Return only the slim hit-proxy meshes – never the visuals
+  function getArrowMeshes(){
+    const result = [];
+    axisArrows.forEach(g=>{ (g._proxies||[]).forEach(p=>result.push(p)); });
+    return result;
+  }
+  function getScaleProxies(){
+    return scaleHandles.filter(h=>h._proxy).map(h=>h._proxy);
+  }
+
+  // Highlight a single arrow by index, restore previous highlight
+  function setArrowHover(arrowIdx){
+    if(_hoveredArrow !== null && _hoveredArrow !== arrowIdx){
+      const a = axisArrows[_hoveredArrow];
+      if(a) a.setColor(ARROW_COLORS[_hoveredArrow]);
+      _hoveredArrow = null;
+    }
+    if(arrowIdx !== null){
+      const a = axisArrows[arrowIdx];
+      if(a){ a.setColor(ARROW_HOVER[arrowIdx]); _hoveredArrow = arrowIdx; }
+    }
+  }
+
+  // Project 3-D world axis onto screen â†’ return dominant screen axis.
+  // Returns: { screenAxis: 'x'|'y', sign: +1|-1 }
+  // Strategy: project two points along the 3D axis through the camera's
+  // projection matrix, measure the resulting 2D screen vector.
+  // Whichever screen component (horizontal or vertical) is larger,
+  // that is the mouse axis to use.  Sign: positive screen-X = move right
+  // increases the 3D value; positive screen-Y = move DOWN decreases.
+  function getScreenAxis(axisName){
+    const AXES = {x: new THREE.Vector3(1,0,0), y: new THREE.Vector3(0,1,0), z: new THREE.Vector3(0,0,1)};
+    const dir = AXES[axisName];
+    const s = shapes[selectedIdx];
+    const hhs  = (s.kind==='box'?(s.sy||1):(s.r||0.5)*2)*0.5;
+    const hhsW = (s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
+    const hhsD = (s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
+    const objWorld = new THREE.Vector3((s.x||0)+hhsW, (s.y||0)+hhs, (s.z||0)+hhsD);
+
+    // Project object centre and object centre + axis direction
+    const p0 = objWorld.clone().project(camera3d);
+    const p1 = objWorld.clone().addScaledVector(dir, 1).project(camera3d);
+
+    const sx = p1.x - p0.x;   // positive = rightward in NDC
+    const sy = p1.y - p0.y;   // positive = upward in NDC (NDC Y is inverted vs screen)
+
+    // Dominant screen component
+    if(Math.abs(sx) >= Math.abs(sy)){
+      // Horizontal mouse movement controls this axis
+      // Moving mouse right (positive movementX) should increase the value
+      // when sx > 0 (arrow points right in screen)
+      return { screenAxis: 'x', sign: sx >= 0 ? 1 : -1 };
+    } else {
+      // Vertical mouse movement controls this axis
+      // Moving mouse up (negative movementY in screen coords) should increase
+      // value when sy > 0 (arrow points up in NDC = up on screen)
+      return { screenAxis: 'y', sign: sy >= 0 ? -1 : 1 };
+    }
+  }
+
+  // Pixels-per-world-unit sensitivity: depends on camera distance to object
+  function getDragSensitivity(){
+    if(selectedIdx === null) return 0.01;
+    const s = shapes[selectedIdx];
+    const hh  = (s.kind==='box'?(s.sy||1):(s.r||0.5)*2)*0.5;
+    const hhW = (s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
+    const hhD = (s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
+    const objPos = new THREE.Vector3((s.x||0)+hhW, (s.y||0)+hh, (s.z||0)+hhD);
+    const dist = camera3d.position.distanceTo(objPos);
+    // At dist=10 we want ~0.01 units/pixel; scale linearly
+    return dist * 0.001;
+  }
+
+  // â”€â”€ mousedown: detect gizmo grab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  renderer3d.domElement.addEventListener('mousedown', e=>{
+    if(e.button !== 0) return;
+    _mouseDownPos = {x: e.clientX, y: e.clientY};
+    if(selectedIdx === null) return;
+
+    const rect = renderer3d.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX-rect.left)/rect.width)*2-1,
+      -((e.clientY-rect.top)/rect.height)*2+1
+    );
+    raycaster.setFromCamera(ndc, camera3d);
+
+    // ── Scale corner handles + height handle ────────────────────────────
+    const scaleHits = raycaster.intersectObjects(getScaleProxies(), false);
+    if(scaleHits.length){
+      const ud=scaleHits[0].object.userData, s=shapes[selectedIdx];
+      if(ud.isHeightHandle){
+        // Vertical drag: use a camera-facing vertical plane through the handle
+        const camDir=new THREE.Vector3();
+        camera3d.getWorldDirection(camDir);
+        camDir.y=0; camDir.normalize();
+        const sWh2=(s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
+        const sDh2=(s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
+        const dragPlane=new THREE.Plane(camDir,
+          -camDir.dot(new THREE.Vector3((s.x||0)+sWh2,ud.startTopY,(s.z||0)+sDh2)));
+        const startPt=new THREE.Vector3();
+        raycaster.ray.intersectPlane(dragPlane,startPt);
+        _scaleDrag={kind:'height',
+          dragPlane, startPt:startPt.clone(),
+          startH: ud.startH,
+          isSphere: s.kind==='sphere'};
+      } else {
+        // Corner drag: anchor = diagonally opposite corner (stays fixed)
+        const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        _scaleDrag={kind:'corner',
+          anchorX:ud.anchorX, anchorZ:ud.anchorZ,
+          dragPlane, isSphere:ud.isSphere};
+      }
+      controls3d.enabled=false;
+      renderer3d.domElement.style.cursor='grabbing';
+      e.stopPropagation(); return;
+    }
+
+    // ── Translate / rotate gizmo arrows ────────────────────────────────
+    const hits=raycaster.intersectObjects(getArrowMeshes(),false);
+    if(!hits.length){
+      // ── Mesh body drag: move object in XZ on the Y=shape.y plane ────
+      const meshHits=raycaster.intersectObjects(meshes,false);
+      if(meshHits.length && meshHits[0].object.userData.shapeIdx===selectedIdx){
+        const s=shapes[selectedIdx];
+        const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        const startPt=new THREE.Vector3();
+        raycaster.ray.intersectPlane(dragPlane,startPt);
+        _meshDrag={
+          dragPlane,
+          offsetX: startPt.x-(s.x||0),  // cursor-to-centre offset
+          offsetZ: startPt.z-(s.z||0),
+        };
+        controls3d.enabled=false;
+        renderer3d.domElement.style.cursor='grabbing';
+        e.stopPropagation();
+      }
+      return;
+    }
+    const aName=hits[0].object.userData.axisName;
+    let shapeProp=aName;
+    if(_gizmoMode==='rotate') shapeProp='r'+aName;
+    let screenAxis,sign;
+    if(_gizmoMode==='rotate'){
+      screenAxis=aName==='y'?'x':'y'; sign=aName==='y'?1:-1;
+    } else { ({screenAxis,sign}=getScreenAxis(aName)); }
+    const sensitivity=_gizmoMode==='rotate'?0.4:getDragSensitivity();
+    _gizmoDrag={axisName:aName,shapeProp,screenAxis,sign,
+      startVal:shapes[selectedIdx][shapeProp]||0,
+      accumulated:0,sensitivity,minVal:-Infinity};
+    controls3d.enabled=false;
+    renderer3d.domElement.style.cursor='grabbing';
+    e.stopPropagation();
+  });
+
+  // â”€â”€ mousemove: hover highlight + drag â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  renderer3d.domElement.addEventListener('mousemove', e=>{
+    // Hover highlight (only when not dragging)
+    if(!_gizmoDrag && !_scaleDrag && selectedIdx !== null){
+      const rect = renderer3d.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((e.clientX-rect.left)/rect.width)*2-1,
+        -((e.clientY-rect.top)/rect.height)*2+1
+      );
+      raycaster.setFromCamera(ndc, camera3d);
+      const arrowHits = raycaster.intersectObjects(getArrowMeshes(), false);
+      const scHits    = raycaster.intersectObjects(getScaleProxies(), false);
+      if(arrowHits.length){
+        setArrowHover(arrowHits[0].object.userData.arrowIdx);
+        renderer3d.domElement.style.cursor = 'grab';
+      } else if(scHits.length){
+        setArrowHover(null);
+        renderer3d.domElement.style.cursor = 'grab';
+      } else {
+        setArrowHover(null);
+        renderer3d.domElement.style.cursor = '';
+      }
+    }
+  });
+
+  function updatePropField(id,val){
+    const n=document.getElementById(id),d=document.getElementById(id+'-display');
+    if(n) n.value=val; if(d) d.textContent=val;
+  }
+
+  window.addEventListener('mousemove', e=>{
+    if(selectedIdx===null) return;
+
+    // ── Mesh body drag ─────────────────────────────────────────────────
+    if(_meshDrag){
+      const rect=renderer3d.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(
+        ((e.clientX-rect.left)/rect.width)*2-1,
+        -((e.clientY-rect.top)/rect.height)*2+1),camera3d);
+      const curPt=new THREE.Vector3();
+      if(!raycaster.ray.intersectPlane(_meshDrag.dragPlane,curPt)) return;
+      const s=shapes[selectedIdx];
+      s.x=parseFloat((curPt.x-_meshDrag.offsetX).toFixed(3));
+      s.z=parseFloat((curPt.z-_meshDrag.offsetZ).toFixed(3));
+      updatePropField('prop-px',s.x);
+      updatePropField('prop-pz',s.z);
+      rebuildMeshes(); return;
+    }
+
+    // ── Scale corner / height drag ─────────────────────────────────────
+    if(_scaleDrag){
+      const rect=renderer3d.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(
+        ((e.clientX-rect.left)/rect.width)*2-1,
+        -((e.clientY-rect.top)/rect.height)*2+1),camera3d);
+      const curPt=new THREE.Vector3();
+      if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
+      const s=shapes[selectedIdx];
+      if(_scaleDrag.kind==='height'){
+        // s.y is the bottom — no position adjustment needed, just change size.
+        const dy=curPt.y-_scaleDrag.startPt.y;
+        if(_scaleDrag.isSphere){
+          const newR=Math.max(0.05,parseFloat((_scaleDrag.startH*0.5+dy*0.5).toFixed(2)));
+          s.r=newR; updatePropField('prop-r',newR);
+        } else {
+          const newSy=Math.max(0.1,parseFloat((_scaleDrag.startH+dy).toFixed(2)));
+          s.sy=newSy; updatePropField('prop-sy',newSy);
+        }
+      } else {
+        // Anchor = diagonally opposite corner (fixed).
+        // New corner origin = min(cur,anchor); new size = |cur−anchor|.
+        const ax=_scaleDrag.anchorX, az=_scaleDrag.anchorZ;
+        const newSx=Math.max(0.1,parseFloat(Math.abs(curPt.x-ax).toFixed(2)));
+        const newSz=Math.max(0.1,parseFloat(Math.abs(curPt.z-az).toFixed(2)));
+        const newX=Math.min(curPt.x,ax), newZ=Math.min(curPt.z,az);
+        if(_scaleDrag.isSphere){
+          // Bounding square side = average of X and Z extents (keeps sphere roughly square).
+          // s.x/s.z = −X/−Z corner of the bounding square.
+          // Derive s.x/s.z from anchor: if anchor is on the +X side, s.x = ax−size; else s.x = ax.
+          const newSize=Math.max(0.1,parseFloat(((newSx+newSz)*0.5).toFixed(2)));
+          const newR=parseFloat((newSize*0.5).toFixed(2));
+          s.r=newR;
+          s.x=parseFloat((ax>curPt.x ? ax-newSize : ax).toFixed(3));
+          s.z=parseFloat((az>curPt.z ? az-newSize : az).toFixed(3));
+          updatePropField('prop-r',newR);
+          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+        } else {
+          s.x=parseFloat(newX.toFixed(3)); s.z=parseFloat(newZ.toFixed(3));
+          s.sx=newSx; s.sz=newSz;
+          updatePropField('prop-sx',newSx); updatePropField('prop-sz',newSz);
+          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+        }
+      }
+      rebuildMeshes(); return;
+    }
+
+    // ── Translate / rotate arrow drag ──────────────────────────────────
+    if(!_gizmoDrag) return;
+    const pixelDelta=_gizmoDrag.screenAxis==='x'?e.movementX:e.movementY;
+    _gizmoDrag.accumulated+=pixelDelta;
+    const worldDelta=_gizmoDrag.accumulated*_gizmoDrag.sensitivity*_gizmoDrag.sign;
+    let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
+    if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
+    shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
+    rebuildMeshes();
+    updatePropField(
+      _gizmoMode==='rotate'?'prop-r'+_gizmoDrag.axisName:'prop-p'+_gizmoDrag.axisName,
+      newVal);
+  });
+
+  window.addEventListener('mouseup', e=>{
+    if(_meshDrag){
+      // Only treat as a drag (suppress click) if the mouse actually moved
+      const mdx=_mouseDownPos?e.clientX-_mouseDownPos.x:99;
+      const mdy=_mouseDownPos?e.clientY-_mouseDownPos.y:99;
+      const wasDrag=Math.hypot(mdx,mdy)>5;
+      if(wasDrag && selectedIdx!==null)
+        logUsage('model_property_change',{id:item.id,shapeIdx:selectedIdx,
+          property:'x+z',value:{x:shapes[selectedIdx].x,z:shapes[selectedIdx].z},via:'mesh_drag'});
+      _meshDrag=null; controls3d.enabled=true; renderer3d.domElement.style.cursor='';
+      if(wasDrag){ _mouseDownPos=null; return; } // suppress click only if drag happened
+    }
+    if(_scaleDrag){
+      if(selectedIdx!==null)
+        logUsage('model_property_change',{id:item.id,shapeIdx:selectedIdx,via:'scale_corner_drag'});
+      _scaleDrag=null; controls3d.enabled=true; renderer3d.domElement.style.cursor='';
+    }
+    if(_gizmoDrag){
+      if(selectedIdx !== null){
+        logUsage('model_property_change',{
+          id: item.id, shapeIdx: selectedIdx,
+          property: _gizmoDrag.shapeProp,
+          value: shapes[selectedIdx][_gizmoDrag.shapeProp],
+          via: 'gizmo_drag'
+        });
+      }
+      _gizmoDrag = null;
+      setArrowHover(null);
+      controls3d.enabled = true;
+      renderer3d.domElement.style.cursor = '';
+    }
+
+    // Click-to-select: only if mouse barely moved
+    if(!_mouseDownPos) return;
+    const dx = e.clientX - _mouseDownPos.x;
+    const dy = e.clientY - _mouseDownPos.y;
+    _mouseDownPos = null;
+    if(Math.hypot(dx, dy) > 5) return;
+
+    const rect = renderer3d.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((e.clientX-rect.left)/rect.width)*2-1,
+      -((e.clientY-rect.top)/rect.height)*2+1
+    );
+    raycaster.setFromCamera(ndc, camera3d);
+    // Don't select when clicking gizmo arrows or scale handles
+    const arrowHits = raycaster.intersectObjects(getArrowMeshes(), false);
+    const sHits     = raycaster.intersectObjects(getScaleProxies(), false);
+    if(arrowHits.length || sHits.length) return;
+
+    const hits = raycaster.intersectObjects(meshes);
+    if(hits.length){
+      const hitIdx = hits[0].object.userData.shapeIdx;
+      if(hitIdx === selectedIdx){
+        // Already selected: cycle translate → rotate → translate
+        _gizmoMode = _gizmoMode === 'translate' ? 'rotate' : 'translate';
+        logUsage('model_gizmo_mode_toggle',{id:item.id, shapeIdx:selectedIdx, mode:_gizmoMode});
+      } else {
+        selectedIdx = hitIdx;
+        _gizmoMode = 'translate'; // always start in translate mode on new selection
+        logUsage('model_shape_select',{id:item.id, shapeIdx:selectedIdx, kind:shapes[selectedIdx]?.kind, via:'click'});
+      }
+    } else {
+      selectedIdx = null;
+      _gizmoMode = 'translate';
+    }
+    rebuildMeshes(); renderProps();
+  });
+
+  // â”€â”€ Render loop â”€â”€
+  // ── Touch support (scale, rotate, move, tap-to-select) ──────────────
+  function getNDC(clientX,clientY){
+    const rect=renderer3d.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((clientX-rect.left)/rect.width)*2-1,
+      -((clientY-rect.top)/rect.height)*2+1);
+  }
+  renderer3d.domElement.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1) return;
+    const t=e.touches[0];
+    _mouseDownPos={x:t.clientX,y:t.clientY};
+    _lastTouch={x:t.clientX,y:t.clientY};
+    if(selectedIdx===null) return;
+    raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
+    const scaleHits=raycaster.intersectObjects(getScaleProxies(),false);
+    if(scaleHits.length){
+      const ud=scaleHits[0].object.userData,s=shapes[selectedIdx];
+      if(ud.isHeightHandle){
+        const camDir=new THREE.Vector3();
+        camera3d.getWorldDirection(camDir); camDir.y=0; camDir.normalize();
+        const sWh2=(s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
+        const sDh2=(s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
+        const dp=new THREE.Plane(camDir,
+          -camDir.dot(new THREE.Vector3((s.x||0)+sWh2,ud.startTopY,(s.z||0)+sDh2)));
+        const sp=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,sp);
+        _scaleDrag={kind:'height',dragPlane:dp,startPt:sp.clone(),
+          startH:ud.startH,isSphere:s.kind==='sphere'};
+      } else {
+        const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        _scaleDrag={kind:'corner',anchorX:ud.anchorX,anchorZ:ud.anchorZ,
+          dragPlane:dp,isSphere:ud.isSphere};
+      }
+      controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
+    }
+    const arrowHits=raycaster.intersectObjects(getArrowMeshes(),false);
+    if(arrowHits.length){
+      const aName=arrowHits[0].object.userData.axisName;
+      let shapeProp=aName;
+      if(_gizmoMode==='rotate') shapeProp='r'+aName;
+      let screenAxis,sign;
+      if(_gizmoMode==='rotate'){screenAxis=aName==='y'?'x':'y';sign=aName==='y'?1:-1;}
+      else{({screenAxis,sign}=getScreenAxis(aName));}
+      const sensitivity=_gizmoMode==='rotate'?0.4:getDragSensitivity();
+      _gizmoDrag={axisName:aName,shapeProp,screenAxis,sign,
+        startVal:shapes[selectedIdx][shapeProp]||0,
+        accumulated:0,sensitivity,minVal:-Infinity};
+      controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
+    }
+    const meshHits=raycaster.intersectObjects(meshes,false);
+    if(meshHits.length&&meshHits[0].object.userData.shapeIdx===selectedIdx){
+      const s=shapes[selectedIdx];
+      const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+      const sp=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,sp);
+      _meshDrag={dragPlane:dp,offsetX:sp.x-(s.x||0),offsetZ:sp.z-(s.z||0)};
+      controls3d.enabled=false; e.preventDefault(); e.stopPropagation();
+    }
+  },{passive:false});
+  window.addEventListener('touchmove',e=>{
+    if(e.touches.length!==1) return;
+    if(!_meshDrag&&!_scaleDrag&&!_gizmoDrag) return;
+    e.preventDefault();
+    if(selectedIdx===null) return;
+    const t=e.touches[0];
+    const movX=_lastTouch?t.clientX-_lastTouch.x:0;
+    const movY=_lastTouch?t.clientY-_lastTouch.y:0;
+    _lastTouch={x:t.clientX,y:t.clientY};
+    if(_meshDrag){
+      raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
+      const curPt=new THREE.Vector3();
+      if(!raycaster.ray.intersectPlane(_meshDrag.dragPlane,curPt)) return;
+      const s=shapes[selectedIdx];
+      s.x=parseFloat((curPt.x-_meshDrag.offsetX).toFixed(3));
+      s.z=parseFloat((curPt.z-_meshDrag.offsetZ).toFixed(3));
+      updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+      rebuildMeshes(); return;
+    }
+    if(_scaleDrag){
+      raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
+      const curPt=new THREE.Vector3();
+      if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
+      const s=shapes[selectedIdx];
+      if(_scaleDrag.kind==='height'){
+        const dy=curPt.y-_scaleDrag.startPt.y;
+        if(_scaleDrag.isSphere){
+          const newR=Math.max(0.05,parseFloat((_scaleDrag.startH*0.5+dy*0.5).toFixed(2)));
+          s.r=newR; updatePropField('prop-r',newR);
+        } else {
+          const newSy=Math.max(0.1,parseFloat((_scaleDrag.startH+dy).toFixed(2)));
+          s.sy=newSy; updatePropField('prop-sy',newSy);
+        }
+      } else {
+        const ax=_scaleDrag.anchorX,az=_scaleDrag.anchorZ;
+        const newSx=Math.max(0.1,parseFloat(Math.abs(curPt.x-ax).toFixed(2)));
+        const newSz=Math.max(0.1,parseFloat(Math.abs(curPt.z-az).toFixed(2)));
+        const newX=Math.min(curPt.x,ax),newZ=Math.min(curPt.z,az);
+        if(_scaleDrag.isSphere){
+          const newSize=Math.max(0.1,parseFloat(((newSx+newSz)*0.5).toFixed(2)));
+          const newR=parseFloat((newSize*0.5).toFixed(2));
+          s.r=newR;
+          s.x=parseFloat((ax>curPt.x?ax-newSize:ax).toFixed(3));
+          s.z=parseFloat((az>curPt.z?az-newSize:az).toFixed(3));
+          updatePropField('prop-r',newR);
+          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+        } else {
+          s.x=parseFloat(newX.toFixed(3)); s.z=parseFloat(newZ.toFixed(3));
+          s.sx=newSx; s.sz=newSz;
+          updatePropField('prop-sx',newSx); updatePropField('prop-sz',newSz);
+          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+        }
+      }
+      rebuildMeshes(); return;
+    }
+    if(_gizmoDrag){
+      const pixelDelta=_gizmoDrag.screenAxis==='x'?movX:movY;
+      _gizmoDrag.accumulated+=pixelDelta;
+      const worldDelta=_gizmoDrag.accumulated*_gizmoDrag.sensitivity*_gizmoDrag.sign;
+      let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
+      if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
+      shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
+      rebuildMeshes();
+      updatePropField(
+        _gizmoMode==='rotate'?'prop-r'+_gizmoDrag.axisName:'prop-p'+_gizmoDrag.axisName,
+        newVal);
+    }
+  },{passive:false});
+  window.addEventListener('touchend',e=>{
+    const t=e.changedTouches[0];
+    if(_meshDrag){
+      const mdx=_mouseDownPos?t.clientX-_mouseDownPos.x:99;
+      const mdy=_mouseDownPos?t.clientY-_mouseDownPos.y:99;
+      const wasDrag=Math.hypot(mdx,mdy)>5;
+      _meshDrag=null; controls3d.enabled=true;
+      if(wasDrag){_mouseDownPos=null;_lastTouch=null;return;}
+    }
+    if(_scaleDrag){_scaleDrag=null; controls3d.enabled=true;}
+    if(_gizmoDrag){_gizmoDrag=null; setArrowHover(null); controls3d.enabled=true;}
+    _lastTouch=null;
+    if(!_mouseDownPos) return;
+    const dx=t.clientX-_mouseDownPos.x,dy=t.clientY-_mouseDownPos.y;
+    _mouseDownPos=null;
+    if(Math.hypot(dx,dy)>5) return;
+    raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
+    const arrowHits2=raycaster.intersectObjects(getArrowMeshes(),false);
+    const sHits2=raycaster.intersectObjects(getScaleProxies(),false);
+    if(arrowHits2.length||sHits2.length) return;
+    const hits=raycaster.intersectObjects(meshes);
+    if(hits.length){
+      const hitIdx=hits[0].object.userData.shapeIdx;
+      if(hitIdx===selectedIdx){
+        _gizmoMode=_gizmoMode==='translate'?'rotate':'translate';
+      } else {selectedIdx=hitIdx;_gizmoMode='translate';}
+    } else {selectedIdx=null;_gizmoMode='translate';}
+    rebuildMeshes(); renderProps();
+  });
+
+  let animRunning = true;
+  function animate3d(){
+    if(!animRunning) return;
+    requestAnimationFrame(animate3d);
+    controls3d.update();
+    renderer3d.render(scene3d, camera3d);
+  }
+  animate3d();
+
+  function teardown3d(){
+    animRunning = false;
+    clearArrows();
+    clearScaleHandles();
+    controls3d.dispose();
+    renderer3d.dispose();
+    meshes.forEach(m=>{ m.geometry.dispose(); m.material.dispose(); });
+    scene3d.clear();
+  }
+
+  renderProps();
+
+  document.getElementById('save-model').addEventListener('click', doSave);
+  document.getElementById('discard-model').addEventListener('click', doDiscard);
+  const _modelOpenedAt = Date.now();
+  logUsage('model_editor_open',{id:item.id, existingShapeCount:item.shapes?item.shapes.length:0});
+}
+
+</script>
+</body>
+</html>
