@@ -4,14 +4,14 @@ MaMoTo is a browser-based workspace for mathematical modelling. It provides an i
 
 ## Project Status
 
-**Prototype running.** The main modelling workspace (`mathmodel-v0.4.html`) is functional. The 3D editor (`3dmodule-v0.1.html`) has been separated into its own development harness due to its complexity and will be reintegrated into the main tool once it is ready.
+**Prototype running.** The main modelling workspace (`mathmodel.html`) is functional. The 3D editor (`3dmodule.html`) has been separated into its own development harness due to its complexity and will be reintegrated into the main tool once it is ready.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `mathmodel-v0.4.html` | Main modelling workspace (current prototype) |
-| `3dmodule-v0.1.html` | 3D editor — standalone dev harness |
+| `mathmodel.html` | Main modelling workspace (current prototype) |
+| `3dmodule.html` | 3D editor — standalone dev harness |
 | `example.json` | Example project data for testing and demonstration |
 
 ## Features
@@ -30,4 +30,4 @@ MaMoTo is a browser-based workspace for mathematical modelling. It provides an i
 
 ## Usage
 
-Open `mathmodel-v0.4.html` directly in a browser. No server or installation needed.
+Open `mathmodel.html` directly in a browser. No server or installation needed.
