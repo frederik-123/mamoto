@@ -236,10 +236,7 @@ function toast(msg) {
 }
 
 // ── Test item ─────────────────────────────────────────────────────────────────
-const DEFAULT_SHAPES = [
-  { kind:'box',    x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, color:'#2255cc' },
-  { kind:'sphere', x:-0.5, y:1, z:-0.5, r:0.5,           color:'#cc2222' },
-];
+const DEFAULT_SHAPES = [];
 let testItem = {
   id: 'dev_model_1',
   type: 'model',
@@ -543,6 +540,150 @@ function open3DEditor(item, deps = {}){
     scaleHandles = [];
   }
 
+  function getFootprintAABB(s){
+    const sW=s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
+    const sD=s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+    const cx=(s.x||0)+sW*0.5, cz=(s.z||0)+sD*0.5;
+    if(s.kind!=='box'){
+      const r=s.r||0.5;
+      return {x0:cx-r,z0:cz-r,x1:cx+r,z1:cz+r};
+    }
+    const q=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
+    if(s.customPositions){
+      const p=s.customPositions; const v=new THREE.Vector3();
+      for(let k=0;k<p.length/3;k++){
+        v.set(p[k*3],p[k*3+1],p[k*3+2]).applyQuaternion(q);
+        const wx=cx+v.x, wz=cz+v.z;
+        if(wx<minX) minX=wx; if(wx>maxX) maxX=wx;
+        if(wz<minZ) minZ=wz; if(wz>maxZ) maxZ=wz;
+      }
+    } else {
+      const sH=s.sy||1;
+      const hx=sW*0.5,hy=sH*0.5,hz=sD*0.5;
+      for(let xi=-1;xi<=1;xi+=2) for(let yi=-1;yi<=1;yi+=2) for(let zi=-1;zi<=1;zi+=2){
+        const v=new THREE.Vector3(xi*hx,yi*hy,zi*hz).applyQuaternion(q);
+        if(cx+v.x<minX) minX=cx+v.x; if(cx+v.x>maxX) maxX=cx+v.x;
+        if(cz+v.z<minZ) minZ=cz+v.z; if(cz+v.z>maxZ) maxZ=cz+v.z;
+      }
+    }
+    return {x0:minX,z0:minZ,x1:maxX,z1:maxZ};
+  }
+
+  function computeCornerScale(s,newAABBW,newAABBD,startSx,startSz,startAABBW,startAABBD){
+    const q=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    const me=new THREE.Matrix4().makeRotationFromQuaternion(q).elements;
+    const hy=(s.sy||1)*0.5;
+    const a=Math.abs(me[0]),b=Math.abs(me[8]),c=Math.abs(me[2]),d=Math.abs(me[10]);
+    const Wp=newAABBW*0.5-Math.abs(me[4])*hy;
+    const Dp=newAABBD*0.5-Math.abs(me[6])*hy;
+    const det=a*d-b*c;
+    if(Math.abs(det)>=0.01){
+      const hx_raw=(Wp*d-Dp*b)/det, hz_raw=(Dp*a-Wp*c)/det;
+      if(hx_raw>0&&hz_raw>0) return {hx:hx_raw,hz:hz_raw};
+    }
+    const scale=Math.sqrt((newAABBW*newAABBD)/Math.max(0.001,startAABBW*startAABBD));
+    return {hx:Math.max(0.05,startSx*0.5*scale),hz:Math.max(0.05,startSz*0.5*scale)};
+  }
+
+  function getMinObjY(s){
+    if(s.customPositions){
+      const cy=(s.y||0)+(s.sy||1)*0.5;
+      const q=new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+      const p=s.customPositions; let minY=Infinity; const v=new THREE.Vector3();
+      for(let k=0;k<p.length/3;k++){
+        v.set(p[k*3],p[k*3+1],p[k*3+2]).applyQuaternion(q);
+        if(cy+v.y<minY) minY=cy+v.y;
+      }
+      return minY;
+    }
+    const sH=s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
+    if(s.kind!=='box') return (s.y||0);
+    const sW=s.sx||1, sD=s.sz||1;
+    const posY=(s.y||0)+sH*0.5;
+    const q=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    let minY=Infinity;
+    for(let xi=-1;xi<=1;xi+=2) for(let yi=-1;yi<=1;yi+=2) for(let zi=-1;zi<=1;zi+=2){
+      const v=new THREE.Vector3(xi*sW*0.5,yi*sH*0.5,zi*sD*0.5).applyQuaternion(q);
+      if(posY+v.y<minY) minY=posY+v.y;
+    }
+    return minY;
+  }
+
+  function getMaxObjY(s){
+    if(s.customPositions){
+      const cy=(s.y||0)+(s.sy||1)*0.5;
+      const q=new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+      const p=s.customPositions; let maxY=-Infinity; const v=new THREE.Vector3();
+      for(let k=0;k<p.length/3;k++){
+        v.set(p[k*3],p[k*3+1],p[k*3+2]).applyQuaternion(q);
+        if(cy+v.y>maxY) maxY=cy+v.y;
+      }
+      return maxY;
+    }
+    const sH=s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
+    if(s.kind!=='box') return (s.y||0)+sH;
+    const sW=s.sx||1, sD=s.sz||1;
+    const posY=(s.y||0)+sH*0.5;
+    const q=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    let maxY=-Infinity;
+    for(let xi=-1;xi<=1;xi+=2) for(let yi=-1;yi<=1;yi+=2) for(let zi=-1;zi<=1;zi+=2){
+      const v=new THREE.Vector3(xi*sW*0.5,yi*sH*0.5,zi*sD*0.5).applyQuaternion(q);
+      if(posY+v.y>maxY) maxY=posY+v.y;
+    }
+    return maxY;
+  }
+
+  function applyHeightDeform(s, startMinObjY, startMaxObjY, targetMaxObjY, origPositions){
+    const newH = Math.max(0.05, targetMaxObjY - startMinObjY);
+    const oldH = Math.max(0.001, startMaxObjY - startMinObjY);
+    const scaleY = newH / oldH;
+    const cx=(s.x||0)+(s.sx||1)*0.5, cy=(s.y||0)+(s.sy||1)*0.5, cz=(s.z||0)+(s.sz||1)*0.5;
+    const q=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    const mw=new THREE.Matrix4().compose(new THREE.Vector3(cx,cy,cz),q,new THREE.Vector3(1,1,1));
+    const mwInv=mw.clone().invert();
+    const n=origPositions.length/3;
+    const deformed=new Float32Array(origPositions.length);
+    const v=new THREE.Vector3();
+    for(let k=0;k<n;k++){
+      v.set(origPositions[k*3],origPositions[k*3+1],origPositions[k*3+2]);
+      v.applyMatrix4(mw);
+      v.y=startMinObjY+scaleY*Math.max(0,v.y-startMinObjY);
+      v.applyMatrix4(mwInv);
+      deformed[k*3]=v.x; deformed[k*3+1]=v.y; deformed[k*3+2]=v.z;
+    }
+    s.customPositions=deformed;
+    s.customYMin=startMinObjY;
+    s.customYMax=startMinObjY+newH;
+  }
+
+  // Bake visual height into s.sy/s.y and re-center customPositions so they remain
+  // valid after the mesh pivot moves. Must be called before clearing customPositions
+  // or before rebuildMeshes uses s.sy for ring radius / box height.
+  function bakeHeightDeform(s){
+    if(!s.customPositions||s.customYMin===undefined||s.customYMax===undefined) return;
+    const visH=s.customYMax-s.customYMin;
+    const old_cy=(s.y||0)+(s.sy||1)*0.5;
+    const new_cy=s.customYMin+visH*0.5;
+    const delta_cy=old_cy-new_cy;
+    if(Math.abs(delta_cy)>1e-9){
+      const q=new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+      const shift=new THREE.Vector3(0,delta_cy,0).applyQuaternion(q.clone().conjugate());
+      const p=s.customPositions;
+      for(let k=0;k<p.length/3;k++){p[k*3]+=shift.x;p[k*3+1]+=shift.y;p[k*3+2]+=shift.z;}
+    }
+    s.sy=parseFloat(visH.toFixed(3));
+    s.y=parseFloat(s.customYMin.toFixed(3));
+  }
+
   function rebuildMeshes(){
     meshes.forEach(m=>{ scene3d.remove(m); m.geometry.dispose(); m.material.dispose(); });
     meshes = [];
@@ -550,8 +691,16 @@ function open3DEditor(item, deps = {}){
     clearScaleHandles();
     shapes.forEach((s,i)=>{
       let geo;
-      if(s.kind==='box') geo = new THREE.BoxGeometry(s.sx||1, s.sy||1, s.sz||1);
-      else               geo = new THREE.SphereGeometry(s.r||0.5, 32, 24);
+      if(s.kind==='box'){
+        geo=new THREE.BoxGeometry(s.sx||1,s.sy||1,s.sz||1);
+        if(s.customPositions&&s.customPositions.length===geo.attributes.position.array.length){
+          geo.attributes.position.array.set(s.customPositions);
+          geo.attributes.position.needsUpdate=true;
+          geo.computeVertexNormals();
+        }
+      } else {
+        geo=new THREE.SphereGeometry(s.r||0.5,32,24);
+      }
       const col = parseInt((s.color||'#2D5A8E').replace('#',''), 16);
       const mat = new THREE.MeshLambertMaterial({ color: col });
       const mesh = new THREE.Mesh(geo, mat);
@@ -562,7 +711,8 @@ function open3DEditor(item, deps = {}){
       mesh.rotation.set(
         (s.rx||0)*Math.PI/180,
         (s.ry||0)*Math.PI/180,
-        (s.rz||0)*Math.PI/180
+        (s.rz||0)*Math.PI/180,
+        'ZYX'
       );
       mesh.castShadow = true; mesh.receiveShadow = true;
       mesh.userData.shapeIdx = i;
@@ -588,10 +738,15 @@ function open3DEditor(item, deps = {}){
       const sW = s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
       const sH = s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
       const sD = s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+      const maxObjY=getMaxObjY(s);
+      const minObjY=getMinObjY(s);
+      const _aabb=s.customPositions&&s.kind==='box'?getFootprintAABB(s):null;
       const pos = new THREE.Vector3(
-        (s.x||0)+sW*0.5, (s.y||0)+sH*0.5, (s.z||0)+sD*0.5);
+        _aabb?(_aabb.x0+_aabb.x1)*0.5:(s.x||0)+sW*0.5,
+        _aabb?(minObjY+maxObjY)*0.5:(s.y||0)+sH*0.5,
+        _aabb?(_aabb.z0+_aabb.z1)*0.5:(s.z||0)+sD*0.5);
       const extX = s.kind==='box' ? (s.sx||1)*0.5+0.6 : (s.r||0.5)+0.6;
-      const extY = s.kind==='box' ? (s.sy||1)*0.5+0.6 : (s.r||0.5)+0.6;
+      const extY = maxObjY - pos.y + 0.6;
       const extZ = s.kind==='box' ? (s.sz||1)*0.5+0.6 : (s.r||0.5)+0.6;
       const axisDefs = [
         {dir:new THREE.Vector3(1,0,0), len:extX, col:0xff3333, axisName:'x'},
@@ -599,9 +754,9 @@ function open3DEditor(item, deps = {}){
         {dir:new THREE.Vector3(0,0,1), len:extZ, col:0x3399ff, axisName:'z'},
       ];
 
-      const halfW=sW*0.5, halfD=sD*0.5;
-      const x0=s.x||0, z0=s.z||0, x1=x0+sW, z1=z0+sD;
-      const midX=x0+halfW, midZ=z0+halfD;
+      if(_gizmoMode!=='rotate'){
+      const {x0,z0,x1,z1}=_aabb||getFootprintAABB(s);
+      const midX=(x0+x1)*0.5, midZ=(z0+z1)*0.5;
       const shapeCol=parseInt((s.color||'#2D5A8E').replace('#',''),16);
 
       (()=>{
@@ -618,7 +773,7 @@ function open3DEditor(item, deps = {}){
         scaleHandles.push({_visuals:[solidLine],_proxy:null});
       })();
 
-      const bottomY=s.y||0;
+      const bottomY=getMinObjY(s);
       (()=>{
         const pts=[
           new THREE.Vector3(x0,bottomY,z0),new THREE.Vector3(x1,bottomY,z0),
@@ -649,7 +804,7 @@ function open3DEditor(item, deps = {}){
         scaleHandles.push({_visuals:[vis],_proxy:proxy,setColor(c){visMat.color.setHex(c);}});
       });
 
-      const topY=(s.y||0)+sH;
+      const topY=maxObjY;
       (()=>{
         const pts=[new THREE.Vector3(midX,bottomY,midZ), new THREE.Vector3(midX,topY,midZ)];
         const mat=new THREE.LineDashedMaterial({color:shapeCol,linewidth:1,dashSize:0.12,gapSize:0.07,depthTest:false});
@@ -673,30 +828,37 @@ function open3DEditor(item, deps = {}){
         scaleHandles.push({_visuals:[vis],_proxy:proxy,
           setColor(c){visMat.color.setHex(c);}});
       })();
+      } // end if(_gizmoMode!=='rotate')
 
       if(_gizmoMode==='translate'){
-        const yDef=axisDefs.find(d=>d.axisName==='y');
-        (({dir,len,axisName})=>{
+        (()=>{
+          const dir=new THREE.Vector3(0,1,0), axisName='y';
           const BLACK=0x111111;
           const mat=new THREE.MeshLambertMaterial({color:BLACK});
-          const CONE_H=0.27, CONE_R=0.105, shaftLen=len-CONE_H;
+          const CONE_H=0.27, CONE_R=0.105, shaftLen=0.3;
+          const base=new THREE.Vector3(pos.x, maxObjY+0.265, pos.z);
           const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,shaftLen,8),mat);
-          shaft.position.copy(pos).addScaledVector(dir,shaftLen*0.5);
+          shaft.position.copy(base).addScaledVector(dir,shaftLen*0.5);
           shaft.raycast=()=>{}; scene3d.add(shaft);
           const cone=new THREE.Mesh(new THREE.CylinderGeometry(0,CONE_R,CONE_H,12),mat);
-          cone.position.copy(pos).addScaledVector(dir,shaftLen+CONE_H*0.5);
+          cone.position.copy(base).addScaledVector(dir,shaftLen+CONE_H*0.5);
           cone.raycast=()=>{}; scene3d.add(cone);
           const proxy=new THREE.Mesh(
             new THREE.CylinderGeometry(0.09,0.09,CONE_H*1.4,6),
             new THREE.MeshBasicMaterial({visible:false}));
-          proxy.position.copy(pos).addScaledVector(dir,shaftLen+CONE_H*0.5);
+          proxy.position.copy(base).addScaledVector(dir,shaftLen+CONE_H*0.5);
           proxy.userData={isGizmo:true,arrowIdx:0,axisName};
           scene3d.add(proxy);
-          axisArrows.push({_visuals:[shaft,cone],_proxies:[proxy],_col:BLACK,
+          axisArrows.push({_visuals:[shaft,cone],_proxies:[proxy],_col:BLACK,_hoverCol:0x555555,
             setColor(c){mat.color.setHex(c);}});
-        })(yDef);
+        })();
       } else {
-        const RING_R=Math.max(extX,extY,extZ)*1.05, TUBE_R=0.045, PROXY_R=0.11, SEG=64;
+        const _visH=s.customYMax!==undefined&&s.customYMin!==undefined
+          ?s.customYMax-s.customYMin:(s.sy||1);
+        const RING_R=s.kind==='box'
+          ?Math.sqrt(((s.sx||1)**2+_visH**2+(s.sz||1)**2)/4)+0.5
+          :(s.r||0.5)+0.5;
+        const TUBE_R=0.045, PROXY_R=0.11, SEG=64;
         axisDefs.forEach(({col,axisName},ai)=>{
           const visMat=new THREE.MeshLambertMaterial({color:col,side:THREE.DoubleSide});
           const ring=new THREE.Mesh(new THREE.TorusGeometry(RING_R,TUBE_R,12,SEG),visMat);
@@ -708,7 +870,8 @@ function open3DEditor(item, deps = {}){
           ring.position.copy(pos); ring.raycast=()=>{};
           proxy.position.copy(pos); proxy.userData={isGizmo:true,arrowIdx:ai,axisName};
           scene3d.add(ring); scene3d.add(proxy);
-          axisArrows.push({_visuals:[ring],_proxies:[proxy],_col:col,
+          const HOVER_MAP={0xff3333:0xff8888,0x33cc33:0x77ee77,0x3399ff:0x77bbff};
+          axisArrows.push({_visuals:[ring],_proxies:[proxy],_col:col,_hoverCol:HOVER_MAP[col]||0x888888,
             setColor(c){visMat.color.setHex(c);}});
         });
       }
@@ -836,12 +999,12 @@ function open3DEditor(item, deps = {}){
   function setArrowHover(arrowIdx){
     if(_hoveredArrow !== null && _hoveredArrow !== arrowIdx){
       const a = axisArrows[_hoveredArrow];
-      if(a) a.setColor(ARROW_COLORS[_hoveredArrow]);
+      if(a) a.setColor(a._col);
       _hoveredArrow = null;
     }
     if(arrowIdx !== null){
       const a = axisArrows[arrowIdx];
-      if(a){ a.setColor(ARROW_HOVER[arrowIdx]); _hoveredArrow = arrowIdx; }
+      if(a){ a.setColor(a._hoverCol); _hoveredArrow = arrowIdx; }
     }
   }
   function getScreenAxis(axisName){
@@ -895,12 +1058,24 @@ function open3DEditor(item, deps = {}){
           -camDir.dot(new THREE.Vector3((s.x||0)+sWh2,ud.startTopY,(s.z||0)+sDh2)));
         const startPt=new THREE.Vector3();
         raycaster.ray.intersectPlane(dragPlane,startPt);
+        const _hAABB=getFootprintAABB(s);
         _scaleDrag={kind:'height', dragPlane, startPt:startPt.clone(),
-          startH:ud.startH, isSphere:s.kind==='sphere'};
+          startH:ud.startH, isSphere:s.kind==='sphere',
+          startSx:s.sx||1, startSz:s.sz||1,
+          startW:(_hAABB.x1-_hAABB.x0)*0.5, startD:(_hAABB.z1-_hAABB.z0)*0.5,
+          startMinObjY:getMinObjY(s), startMaxObjY:getMaxObjY(s),
+          startCx:(_hAABB.x0+_hAABB.x1)*0.5, startCz:(_hAABB.z0+_hAABB.z1)*0.5};
+        {const _hm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
+        if(_hm){_hm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_hm.geometry.attributes.position.array);}}
       } else {
         const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        const startAABB=getFootprintAABB(s);
+        const _cSP=new THREE.Vector3(); raycaster.ray.intersectPlane(dragPlane,_cSP);
         _scaleDrag={kind:'corner', anchorX:ud.anchorX, anchorZ:ud.anchorZ,
-          dragPlane, isSphere:ud.isSphere};
+          dragPlane, isSphere:ud.isSphere,
+          startSx:s.sx||1, startSz:s.sz||1,
+          startAABBW:startAABB.x1-startAABB.x0, startAABBD:startAABB.z1-startAABB.z0,
+          sideX:_cSP.x<ud.anchorX?-1:1, sideZ:_cSP.z<ud.anchorZ?-1:1};
       }
       controls3d.enabled=false;
       renderer3d.domElement.style.cursor='grabbing';
@@ -927,12 +1102,18 @@ function open3DEditor(item, deps = {}){
     if(_gizmoMode==='rotate') shapeProp='r'+aName;
     let screenAxis,sign;
     if(_gizmoMode==='rotate'){
-      screenAxis=aName==='y'?'x':'y'; sign=aName==='y'?1:-1;
+      screenAxis='x'; sign=1;
     } else { ({screenAxis,sign}=getScreenAxis(aName)); }
     const sensitivity=_gizmoMode==='rotate'?0.4:getDragSensitivity();
     _gizmoDrag={axisName:aName,shapeProp,screenAxis,sign,
       startVal:shapes[selectedIdx][shapeProp]||0,
       accumulated:0,sensitivity,minVal:-Infinity};
+    if(_gizmoMode==='rotate'){
+      const WORLD_AXES={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,1,0),z:new THREE.Vector3(0,0,1)};
+      const srcMesh=meshes.find(m=>m.userData.shapeIdx===selectedIdx);
+      _gizmoDrag.worldAxis=WORLD_AXES[aName];
+      _gizmoDrag.startQuaternion=srcMesh?srcMesh.quaternion.clone():new THREE.Quaternion();
+    }
     controls3d.enabled=false;
     renderer3d.domElement.style.cursor='grabbing';
     e.stopPropagation();
@@ -990,47 +1171,73 @@ function open3DEditor(item, deps = {}){
       if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
       if(_scaleDrag.kind==='height'){
-        const dy=curPt.y-_scaleDrag.startPt.y;
         if(_scaleDrag.isSphere){
+          const dy=curPt.y-_scaleDrag.startPt.y;
           const newR=Math.max(0.05,parseFloat((_scaleDrag.startH*0.5+dy*0.5).toFixed(2)));
           s.r=newR; updatePropField('prop-r',newR);
         } else {
-          const newSy=Math.max(0.1,parseFloat((_scaleDrag.startH+dy).toFixed(2)));
-          s.sy=newSy; updatePropField('prop-sy',newSy);
+          if(_scaleDrag.origPositions){
+            const targetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
+            applyHeightDeform(s,_scaleDrag.startMinObjY,_scaleDrag.startMaxObjY,targetMaxObjY,_scaleDrag.origPositions);
+            updatePropField('prop-sy',parseFloat((s.customYMax-s.customYMin).toFixed(2)));
+          }
         }
       } else {
+        if(s.customPositions&&s.customYMin!==undefined&&s.customYMax!==undefined){
+          s.sy=parseFloat((s.customYMax-s.customYMin).toFixed(3));
+          updatePropField('prop-sy',s.sy);
+        }
+        delete s.customPositions; delete s.customYMin; delete s.customYMax;
         const ax=_scaleDrag.anchorX, az=_scaleDrag.anchorZ;
-        const newSx=Math.max(0.1,parseFloat(Math.abs(curPt.x-ax).toFixed(2)));
-        const newSz=Math.max(0.1,parseFloat(Math.abs(curPt.z-az).toFixed(2)));
-        const newX=Math.min(curPt.x,ax), newZ=Math.min(curPt.z,az);
+        const MIN_AABB=0.15;
+        const cx2=_scaleDrag.sideX<0?Math.min(curPt.x,ax-MIN_AABB):Math.max(curPt.x,ax+MIN_AABB);
+        const cz2=_scaleDrag.sideZ<0?Math.min(curPt.z,az-MIN_AABB):Math.max(curPt.z,az+MIN_AABB);
+        const newAABBW=Math.abs(cx2-ax), newAABBD=Math.abs(cz2-az);
+        const newCx=(cx2+ax)*0.5, newCz=(cz2+az)*0.5;
         if(_scaleDrag.isSphere){
-          const newSize=Math.max(0.1,parseFloat(((newSx+newSz)*0.5).toFixed(2)));
+          const newSize=Math.max(0.1,parseFloat(((newAABBW+newAABBD)*0.5).toFixed(2)));
           const newR=parseFloat((newSize*0.5).toFixed(2));
           s.r=newR;
-          s.x=parseFloat((ax>curPt.x ? ax-newSize : ax).toFixed(3));
-          s.z=parseFloat((az>curPt.z ? az-newSize : az).toFixed(3));
+          s.x=parseFloat((newCx-newR).toFixed(3));
+          s.z=parseFloat((newCz-newR).toFixed(3));
           updatePropField('prop-r',newR);
           updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
         } else {
-          s.x=parseFloat(newX.toFixed(3)); s.z=parseFloat(newZ.toFixed(3));
-          s.sx=newSx; s.sz=newSz;
-          updatePropField('prop-sx',newSx); updatePropField('prop-sz',newSz);
+          const {hx,hz}=computeCornerScale(s,newAABBW,newAABBD,
+            _scaleDrag.startSx,_scaleDrag.startSz,
+            _scaleDrag.startAABBW,_scaleDrag.startAABBD);
+          s.sx=parseFloat((hx*2).toFixed(2)); s.sz=parseFloat((hz*2).toFixed(2));
+          s.x=parseFloat((newCx-hx).toFixed(3)); s.z=parseFloat((newCz-hz).toFixed(3));
+          updatePropField('prop-sx',s.sx); updatePropField('prop-sz',s.sz);
           updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
         }
       }
       rebuildMeshes(); return;
     }
     if(!_gizmoDrag) return;
-    const pixelDelta=_gizmoDrag.screenAxis==='x'?e.movementX:e.movementY;
+    const pixelDelta=_gizmoMode==='rotate'?(e.movementX-e.movementY):(_gizmoDrag.screenAxis==='x'?e.movementX:e.movementY);
     _gizmoDrag.accumulated+=pixelDelta;
     const worldDelta=_gizmoDrag.accumulated*_gizmoDrag.sensitivity*_gizmoDrag.sign;
-    let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
-    if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
-    shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
-    rebuildMeshes();
-    updatePropField(
-      _gizmoMode==='rotate'?'prop-r'+_gizmoDrag.axisName:'prop-p'+_gizmoDrag.axisName,
-      newVal);
+    if(_gizmoMode==='rotate'&&_gizmoDrag.worldAxis){
+      const totalRad=worldDelta*Math.PI/180;
+      const rotQ=new THREE.Quaternion().setFromAxisAngle(_gizmoDrag.worldAxis,totalRad);
+      const resultQ=rotQ.multiply(_gizmoDrag.startQuaternion.clone());
+      const euler=new THREE.Euler().setFromQuaternion(resultQ,'ZYX');
+      const s=shapes[selectedIdx];
+      s.rx=parseFloat((euler.x*180/Math.PI).toFixed(2));
+      s.ry=parseFloat((euler.y*180/Math.PI).toFixed(2));
+      s.rz=parseFloat((euler.z*180/Math.PI).toFixed(2));
+      rebuildMeshes();
+      updatePropField('prop-rx',s.rx);
+      updatePropField('prop-ry',s.ry);
+      updatePropField('prop-rz',s.rz);
+    } else {
+      let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
+      if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
+      shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
+      rebuildMeshes();
+      updatePropField('prop-p'+_gizmoDrag.axisName,newVal);
+    }
   });
 
   window.addEventListener('mouseup', e=>{
@@ -1045,8 +1252,10 @@ function open3DEditor(item, deps = {}){
       if(wasDrag){ _mouseDownPos=null; return; }
     }
     if(_scaleDrag){
-      if(selectedIdx!==null)
+      if(selectedIdx!==null){
+        if(_scaleDrag.kind==='height'&&!_scaleDrag.isSphere) bakeHeightDeform(shapes[selectedIdx]);
         logUsage('model_property_change',{id:item.id,shapeIdx:selectedIdx,via:'scale_corner_drag'});
+      }
       _scaleDrag=null; controls3d.enabled=true; renderer3d.domElement.style.cursor='';
     }
     if(_gizmoDrag){
@@ -1083,6 +1292,7 @@ function open3DEditor(item, deps = {}){
     if(hits.length){
       const hitIdx = hits[0].object.userData.shapeIdx;
       if(hitIdx === selectedIdx){
+        if(_gizmoMode==='translate') bakeHeightDeform(shapes[selectedIdx]);
         _gizmoMode = _gizmoMode === 'translate' ? 'rotate' : 'translate';
         logUsage('model_gizmo_mode_toggle',{id:item.id, shapeIdx:selectedIdx, mode:_gizmoMode});
       } else {
@@ -1122,12 +1332,24 @@ function open3DEditor(item, deps = {}){
         const dp=new THREE.Plane(camDir,
           -camDir.dot(new THREE.Vector3((s.x||0)+sWh2,ud.startTopY,(s.z||0)+sDh2)));
         const sp=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,sp);
+        const _thAABB=getFootprintAABB(s);
         _scaleDrag={kind:'height',dragPlane:dp,startPt:sp.clone(),
-          startH:ud.startH,isSphere:s.kind==='sphere'};
+          startH:ud.startH,isSphere:s.kind==='sphere',
+          startSx:s.sx||1,startSz:s.sz||1,
+          startW:(_thAABB.x1-_thAABB.x0)*0.5,startD:(_thAABB.z1-_thAABB.z0)*0.5,
+          startMinObjY:getMinObjY(s),startMaxObjY:getMaxObjY(s),
+          startCx:(_thAABB.x0+_thAABB.x1)*0.5,startCz:(_thAABB.z0+_thAABB.z1)*0.5};
+        {const _thm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
+        if(_thm){_thm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_thm.geometry.attributes.position.array);}}
       } else {
         const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        const startAABB=getFootprintAABB(s);
+        const _tcSP=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,_tcSP);
         _scaleDrag={kind:'corner',anchorX:ud.anchorX,anchorZ:ud.anchorZ,
-          dragPlane:dp,isSphere:ud.isSphere};
+          dragPlane:dp,isSphere:ud.isSphere,
+          startSx:s.sx||1,startSz:s.sz||1,
+          startAABBW:startAABB.x1-startAABB.x0,startAABBD:startAABB.z1-startAABB.z0,
+          sideX:_tcSP.x<ud.anchorX?-1:1,sideZ:_tcSP.z<ud.anchorZ?-1:1};
       }
       controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
     }
@@ -1137,12 +1359,18 @@ function open3DEditor(item, deps = {}){
       let shapeProp=aName;
       if(_gizmoMode==='rotate') shapeProp='r'+aName;
       let screenAxis,sign;
-      if(_gizmoMode==='rotate'){screenAxis=aName==='y'?'x':'y';sign=aName==='y'?1:-1;}
+      if(_gizmoMode==='rotate'){screenAxis='x';sign=1;}
       else{({screenAxis,sign}=getScreenAxis(aName));}
       const sensitivity=_gizmoMode==='rotate'?0.4:getDragSensitivity();
       _gizmoDrag={axisName:aName,shapeProp,screenAxis,sign,
         startVal:shapes[selectedIdx][shapeProp]||0,
         accumulated:0,sensitivity,minVal:-Infinity};
+      if(_gizmoMode==='rotate'){
+        const WORLD_AXES={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,1,0),z:new THREE.Vector3(0,0,1)};
+        const srcMesh=meshes.find(m=>m.userData.shapeIdx===selectedIdx);
+        _gizmoDrag.worldAxis=WORLD_AXES[aName];
+        _gizmoDrag.startQuaternion=srcMesh?srcMesh.quaternion.clone():new THREE.Quaternion();
+      }
       controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
     }
     const meshHits=raycaster.intersectObjects(meshes,false);
@@ -1180,47 +1408,73 @@ function open3DEditor(item, deps = {}){
       if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
       if(_scaleDrag.kind==='height'){
-        const dy=curPt.y-_scaleDrag.startPt.y;
         if(_scaleDrag.isSphere){
+          const dy=curPt.y-_scaleDrag.startPt.y;
           const newR=Math.max(0.05,parseFloat((_scaleDrag.startH*0.5+dy*0.5).toFixed(2)));
           s.r=newR; updatePropField('prop-r',newR);
         } else {
-          const newSy=Math.max(0.1,parseFloat((_scaleDrag.startH+dy).toFixed(2)));
-          s.sy=newSy; updatePropField('prop-sy',newSy);
+          if(_scaleDrag.origPositions){
+            const targetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
+            applyHeightDeform(s,_scaleDrag.startMinObjY,_scaleDrag.startMaxObjY,targetMaxObjY,_scaleDrag.origPositions);
+            updatePropField('prop-sy',parseFloat((s.customYMax-s.customYMin).toFixed(2)));
+          }
         }
       } else {
+        if(s.customPositions&&s.customYMin!==undefined&&s.customYMax!==undefined){
+          s.sy=parseFloat((s.customYMax-s.customYMin).toFixed(3));
+          updatePropField('prop-sy',s.sy);
+        }
+        delete s.customPositions; delete s.customYMin; delete s.customYMax;
         const ax=_scaleDrag.anchorX,az=_scaleDrag.anchorZ;
-        const newSx=Math.max(0.1,parseFloat(Math.abs(curPt.x-ax).toFixed(2)));
-        const newSz=Math.max(0.1,parseFloat(Math.abs(curPt.z-az).toFixed(2)));
-        const newX=Math.min(curPt.x,ax),newZ=Math.min(curPt.z,az);
+        const MIN_AABB=0.15;
+        const cx2=_scaleDrag.sideX<0?Math.min(curPt.x,ax-MIN_AABB):Math.max(curPt.x,ax+MIN_AABB);
+        const cz2=_scaleDrag.sideZ<0?Math.min(curPt.z,az-MIN_AABB):Math.max(curPt.z,az+MIN_AABB);
+        const newAABBW=Math.abs(cx2-ax),newAABBD=Math.abs(cz2-az);
+        const newCx=(cx2+ax)*0.5,newCz=(cz2+az)*0.5;
         if(_scaleDrag.isSphere){
-          const newSize=Math.max(0.1,parseFloat(((newSx+newSz)*0.5).toFixed(2)));
+          const newSize=Math.max(0.1,parseFloat(((newAABBW+newAABBD)*0.5).toFixed(2)));
           const newR=parseFloat((newSize*0.5).toFixed(2));
           s.r=newR;
-          s.x=parseFloat((ax>curPt.x?ax-newSize:ax).toFixed(3));
-          s.z=parseFloat((az>curPt.z?az-newSize:az).toFixed(3));
+          s.x=parseFloat((newCx-newR).toFixed(3));
+          s.z=parseFloat((newCz-newR).toFixed(3));
           updatePropField('prop-r',newR);
           updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
         } else {
-          s.x=parseFloat(newX.toFixed(3)); s.z=parseFloat(newZ.toFixed(3));
-          s.sx=newSx; s.sz=newSz;
-          updatePropField('prop-sx',newSx); updatePropField('prop-sz',newSz);
+          const {hx,hz}=computeCornerScale(s,newAABBW,newAABBD,
+            _scaleDrag.startSx,_scaleDrag.startSz,
+            _scaleDrag.startAABBW,_scaleDrag.startAABBD);
+          s.sx=parseFloat((hx*2).toFixed(2)); s.sz=parseFloat((hz*2).toFixed(2));
+          s.x=parseFloat((newCx-hx).toFixed(3)); s.z=parseFloat((newCz-hz).toFixed(3));
+          updatePropField('prop-sx',s.sx); updatePropField('prop-sz',s.sz);
           updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
         }
       }
       rebuildMeshes(); return;
     }
     if(_gizmoDrag){
-      const pixelDelta=_gizmoDrag.screenAxis==='x'?movX:movY;
+      const pixelDelta=_gizmoMode==='rotate'?(movX-movY):(_gizmoDrag.screenAxis==='x'?movX:movY);
       _gizmoDrag.accumulated+=pixelDelta;
       const worldDelta=_gizmoDrag.accumulated*_gizmoDrag.sensitivity*_gizmoDrag.sign;
-      let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
-      if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
-      shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
-      rebuildMeshes();
-      updatePropField(
-        _gizmoMode==='rotate'?'prop-r'+_gizmoDrag.axisName:'prop-p'+_gizmoDrag.axisName,
-        newVal);
+      if(_gizmoMode==='rotate'&&_gizmoDrag.worldAxis){
+        const totalRad=worldDelta*Math.PI/180;
+        const rotQ=new THREE.Quaternion().setFromAxisAngle(_gizmoDrag.worldAxis,totalRad);
+        const resultQ=rotQ.multiply(_gizmoDrag.startQuaternion.clone());
+        const euler=new THREE.Euler().setFromQuaternion(resultQ,'ZYX');
+        const s=shapes[selectedIdx];
+        s.rx=parseFloat((euler.x*180/Math.PI).toFixed(2));
+        s.ry=parseFloat((euler.y*180/Math.PI).toFixed(2));
+        s.rz=parseFloat((euler.z*180/Math.PI).toFixed(2));
+        rebuildMeshes();
+        updatePropField('prop-rx',s.rx);
+        updatePropField('prop-ry',s.ry);
+        updatePropField('prop-rz',s.rz);
+      } else {
+        let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
+        if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
+        shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
+        rebuildMeshes();
+        updatePropField('prop-p'+_gizmoDrag.axisName,newVal);
+      }
     }
   },{passive:false});
 
@@ -1233,7 +1487,10 @@ function open3DEditor(item, deps = {}){
       _meshDrag=null; controls3d.enabled=true;
       if(wasDrag){_mouseDownPos=null;_lastTouch=null;return;}
     }
-    if(_scaleDrag){_scaleDrag=null; controls3d.enabled=true;}
+    if(_scaleDrag){
+      if(selectedIdx!==null&&_scaleDrag.kind==='height'&&!_scaleDrag.isSphere) bakeHeightDeform(shapes[selectedIdx]);
+      _scaleDrag=null; controls3d.enabled=true;
+    }
     if(_gizmoDrag){_gizmoDrag=null; setArrowHover(null); controls3d.enabled=true;}
     _lastTouch=null;
     if(!_mouseDownPos) return;
@@ -1248,6 +1505,7 @@ function open3DEditor(item, deps = {}){
     if(hits.length){
       const hitIdx=hits[0].object.userData.shapeIdx;
       if(hitIdx===selectedIdx){
+        if(_gizmoMode==='translate') bakeHeightDeform(shapes[selectedIdx]);
         _gizmoMode=_gizmoMode==='translate'?'rotate':'translate';
       } else {selectedIdx=hitIdx;_gizmoMode='translate';}
     } else {selectedIdx=null;_gizmoMode='translate';}
