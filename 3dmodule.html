@@ -1069,16 +1069,19 @@ function open3DEditor(item, deps = {}){
     return camera3d.position.distanceTo(objPos) * 0.001;
   }
 
-  renderer3d.domElement.addEventListener('mousedown', e=>{
-    if(e.button !== 0) return;
-    _mouseDownPos = {x: e.clientX, y: e.clientY};
-    if(selectedIdx === null) return;
-    const rect = renderer3d.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((e.clientX-rect.left)/rect.width)*2-1,
-      -((e.clientY-rect.top)/rect.height)*2+1
-    );
-    raycaster.setFromCamera(ndc, camera3d);
+  function getNDC(clientX,clientY){
+    const rect=renderer3d.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((clientX-rect.left)/rect.width)*2-1,
+      -((clientY-rect.top)/rect.height)*2+1);
+  }
+
+  // Shared by mouse (mousedown) and touch (touchstart): hit-tests scale handles, gizmo
+  // arrows/rings, then the mesh body itself, and sets up whichever drag state applies.
+  // Returns true if something was grabbed (caller should stop the event from propagating).
+  function startPointerDrag(clientX, clientY){
+    if(selectedIdx === null) return false;
+    raycaster.setFromCamera(getNDC(clientX,clientY), camera3d);
 
     const scaleHits = raycaster.intersectObjects(getScaleProxies(), false);
     if(scaleHits.length){
@@ -1099,8 +1102,8 @@ function open3DEditor(item, deps = {}){
           startW:(_hAABB.x1-_hAABB.x0)*0.5, startD:(_hAABB.z1-_hAABB.z0)*0.5,
           startMinObjY:getMinObjY(s), startMaxObjY:getMaxObjY(s),
           startCx:(_hAABB.x0+_hAABB.x1)*0.5, startCz:(_hAABB.z0+_hAABB.z1)*0.5};
-        {const _hm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
-        if(_hm){_hm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_hm.geometry.attributes.position.array);}}
+        const _hm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
+        if(_hm){_hm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_hm.geometry.attributes.position.array);}
       } else {
         // The corner handles sit at bottomY = getMinObjY(s), which for a box tilted around
         // X/Z is BELOW s.y (the box's nominal, untilted floor). A drag plane at s.y would
@@ -1126,11 +1129,11 @@ function open3DEditor(item, deps = {}){
       }
       controls3d.enabled=false;
       renderer3d.domElement.style.cursor='grabbing';
-      e.stopPropagation(); return;
+      return true;
     }
 
-    const hits=raycaster.intersectObjects(getArrowMeshes(),false);
-    if(!hits.length){
+    const arrowHits=raycaster.intersectObjects(getArrowMeshes(),false);
+    if(!arrowHits.length){
       const meshHits=raycaster.intersectObjects(meshes,false);
       if(meshHits.length && meshHits[0].object.userData.shapeIdx===selectedIdx){
         const s=shapes[selectedIdx];
@@ -1140,11 +1143,11 @@ function open3DEditor(item, deps = {}){
         _meshDrag={dragPlane, offsetX:startPt.x-(s.x||0), offsetZ:startPt.z-(s.z||0)};
         controls3d.enabled=false;
         renderer3d.domElement.style.cursor='grabbing';
-        e.stopPropagation();
+        return true;
       }
-      return;
+      return false;
     }
-    const aName=hits[0].object.userData.axisName;
+    const aName=arrowHits[0].object.userData.axisName;
     let shapeProp=aName;
     if(_gizmoMode==='rotate') shapeProp='r'+aName;
     let screenAxis,sign;
@@ -1163,7 +1166,13 @@ function open3DEditor(item, deps = {}){
     }
     controls3d.enabled=false;
     renderer3d.domElement.style.cursor='grabbing';
-    e.stopPropagation();
+    return true;
+  }
+
+  renderer3d.domElement.addEventListener('mousedown', e=>{
+    if(e.button !== 0) return;
+    _mouseDownPos = {x: e.clientX, y: e.clientY};
+    if(startPointerDrag(e.clientX, e.clientY)) e.stopPropagation();
   });
 
   renderer3d.domElement.addEventListener('mousemove', e=>{
@@ -1194,13 +1203,14 @@ function open3DEditor(item, deps = {}){
     if(n) n.value=val; if(d) d.textContent=val;
   }
 
-  window.addEventListener('mousemove', e=>{
+  // Shared by mouse (mousemove) and touch (touchmove): advances whichever drag is
+  // currently active. movX/movY are the screen-pixel delta since the last move event,
+  // used only by the gizmo arrow/ring drag (mouse supplies it via e.movementX/Y; touch
+  // computes it from consecutive touch positions since touch events lack that field).
+  function processPointerMove(clientX, clientY, movX, movY){
     if(selectedIdx===null) return;
     if(_meshDrag){
-      const rect=renderer3d.domElement.getBoundingClientRect();
-      raycaster.setFromCamera(new THREE.Vector2(
-        ((e.clientX-rect.left)/rect.width)*2-1,
-        -((e.clientY-rect.top)/rect.height)*2+1),camera3d);
+      raycaster.setFromCamera(getNDC(clientX,clientY),camera3d);
       const curPt=new THREE.Vector3();
       if(!raycaster.ray.intersectPlane(_meshDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
@@ -1210,10 +1220,7 @@ function open3DEditor(item, deps = {}){
       rebuildMeshes(); return;
     }
     if(_scaleDrag){
-      const rect=renderer3d.domElement.getBoundingClientRect();
-      raycaster.setFromCamera(new THREE.Vector2(
-        ((e.clientX-rect.left)/rect.width)*2-1,
-        -((e.clientY-rect.top)/rect.height)*2+1),camera3d);
+      raycaster.setFromCamera(getNDC(clientX,clientY),camera3d);
       // A ray nearly parallel to the drag plane makes the intersection numerically
       // unstable (tiny mouse/camera changes swing the result wildly) — skip such
       // frames instead of applying a wild point, which is what causes handles to jump.
@@ -1259,7 +1266,7 @@ function open3DEditor(item, deps = {}){
       rebuildMeshes(); return;
     }
     if(!_gizmoDrag) return;
-    const pixelDelta=_gizmoMode==='rotate'?(e.movementX-e.movementY):(_gizmoDrag.screenAxis==='x'?e.movementX:e.movementY);
+    const pixelDelta=_gizmoMode==='rotate'?(movX-movY):(_gizmoDrag.screenAxis==='x'?movX:movY);
     _gizmoDrag.accumulated+=pixelDelta;
     const worldDelta=_gizmoDrag.accumulated*_gizmoDrag.sensitivity*_gizmoDrag.sign;
     if(_gizmoMode==='rotate'&&_gizmoDrag.worldAxis){
@@ -1282,18 +1289,28 @@ function open3DEditor(item, deps = {}){
       rebuildMeshes();
       updatePropField('prop-p'+_gizmoDrag.axisName,newVal);
     }
+  }
+
+  window.addEventListener('mousemove', e=>{
+    processPointerMove(e.clientX, e.clientY, e.movementX, e.movementY);
   });
 
-  window.addEventListener('mouseup', e=>{
+  // Shared by mouse (mouseup) and touch (touchend): releases whichever drag is active,
+  // baking + persisting changes as needed. Returns true only when a mesh-body drag was
+  // released after actually moving (the one case that should skip click/tap handling —
+  // scale/gizmo releases intentionally fall through, since the click-detection below
+  // re-checks for arrow/scale-proxy hits and bails on those itself).
+  function endPointerDrag(clientX, clientY, downPos){
+    let skipClick = false;
     if(_meshDrag){
-      const mdx=_mouseDownPos?e.clientX-_mouseDownPos.x:99;
-      const mdy=_mouseDownPos?e.clientY-_mouseDownPos.y:99;
+      const mdx=downPos?clientX-downPos.x:99;
+      const mdy=downPos?clientY-downPos.y:99;
       const wasDrag=Math.hypot(mdx,mdy)>5;
       if(wasDrag && selectedIdx!==null)
         logUsage('model_property_change',{id:item.id,shapeIdx:selectedIdx,
           property:'x+z',value:{x:shapes[selectedIdx].x,z:shapes[selectedIdx].z},via:'mesh_drag'});
       _meshDrag=null; controls3d.enabled=true; renderer3d.domElement.style.cursor='';
-      if(wasDrag){ _mouseDownPos=null; return; }
+      if(wasDrag) skipClick = true;
     }
     if(_scaleDrag){
       if(selectedIdx!==null){
@@ -1323,18 +1340,14 @@ function open3DEditor(item, deps = {}){
       controls3d.enabled = true;
       renderer3d.domElement.style.cursor = '';
     }
-    if(!_mouseDownPos) return;
-    const dx = e.clientX - _mouseDownPos.x;
-    const dy = e.clientY - _mouseDownPos.y;
-    _mouseDownPos = null;
-    if(Math.hypot(dx, dy) > 5) return;
+    return skipClick;
+  }
 
-    const rect = renderer3d.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((e.clientX-rect.left)/rect.width)*2-1,
-      -((e.clientY-rect.top)/rect.height)*2+1
-    );
-    raycaster.setFromCamera(ndc, camera3d);
+  // Shared by mouse (mouseup) and touch (touchend): a click/tap that wasn't a drag —
+  // select a shape, toggle gizmo translate/rotate mode on the already-selected one, or
+  // deselect when clicking empty space.
+  function handlePointerClick(clientX, clientY){
+    raycaster.setFromCamera(getNDC(clientX,clientY), camera3d);
     const arrowHits = raycaster.intersectObjects(getArrowMeshes(), false);
     const sHits     = raycaster.intersectObjects(getScaleProxies(), false);
     if(arrowHits.length || sHits.length) return;
@@ -1359,218 +1372,53 @@ function open3DEditor(item, deps = {}){
       _gizmoMode = 'translate';
     }
     rebuildMeshes(); renderProps();
+  }
+
+  window.addEventListener('mouseup', e=>{
+    if(endPointerDrag(e.clientX, e.clientY, _mouseDownPos)){
+      _mouseDownPos = null;
+      return;
+    }
+    if(!_mouseDownPos) return;
+    const dx = e.clientX - _mouseDownPos.x;
+    const dy = e.clientY - _mouseDownPos.y;
+    _mouseDownPos = null;
+    if(Math.hypot(dx, dy) > 5) return;
+    handlePointerClick(e.clientX, e.clientY);
   });
 
   // ── Touch support ────────────────────────────────────────────────────────────
-  function getNDC(clientX,clientY){
-    const rect=renderer3d.domElement.getBoundingClientRect();
-    return new THREE.Vector2(
-      ((clientX-rect.left)/rect.width)*2-1,
-      -((clientY-rect.top)/rect.height)*2+1);
-  }
   renderer3d.domElement.addEventListener('touchstart',e=>{
     if(e.touches.length!==1) return;
     const t=e.touches[0];
     _mouseDownPos={x:t.clientX,y:t.clientY};
     _lastTouch={x:t.clientX,y:t.clientY};
-    if(selectedIdx===null) return;
-    raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
-    const scaleHits=raycaster.intersectObjects(getScaleProxies(),false);
-    if(scaleHits.length){
-      const ud=scaleHits[0].object.userData,s=shapes[selectedIdx];
-      if(ud.isHeightHandle){
-        const camDir=new THREE.Vector3();
-        camera3d.getWorldDirection(camDir); camDir.y=0; camDir.normalize();
-        const sWh2=(s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
-        const sDh2=(s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
-        const dp=new THREE.Plane(camDir,
-          -camDir.dot(new THREE.Vector3((s.x||0)+sWh2,ud.startTopY,(s.z||0)+sDh2)));
-        const sp=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,sp);
-        const _thAABB=getFootprintAABB(s);
-        _scaleDrag={kind:'height',dragPlane:dp,startPt:sp.clone(),
-          startH:ud.startH,isSphere:s.kind==='sphere',
-          startSx:s.sx||1,startSz:s.sz||1,
-          startW:(_thAABB.x1-_thAABB.x0)*0.5,startD:(_thAABB.z1-_thAABB.z0)*0.5,
-          startMinObjY:getMinObjY(s),startMaxObjY:getMaxObjY(s),
-          startCx:(_thAABB.x0+_thAABB.x1)*0.5,startCz:(_thAABB.z0+_thAABB.z1)*0.5};
-        {const _thm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
-        if(_thm){_thm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_thm.geometry.attributes.position.array);}}
-      } else {
-        const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-getMinObjY(s));
-        const startAABB=getFootprintAABB(s);
-        const _tcSP=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,_tcSP);
-        const _tCornerPos=scaleHits[0].object.position;
-        _scaleDrag={kind:'corner',anchorX:ud.anchorX,anchorZ:ud.anchorZ,
-          dragPlane:dp,isSphere:ud.isSphere,
-          startAABBW:Math.max(0.001,startAABB.x1-startAABB.x0),
-          startAABBD:Math.max(0.001,startAABB.z1-startAABB.z0),
-          sideX:_tCornerPos.x<ud.anchorX?-1:1,sideZ:_tCornerPos.z<ud.anchorZ?-1:1,
-          offsetX:_tCornerPos.x-_tcSP.x,offsetZ:_tCornerPos.z-_tcSP.z};
-        if(!ud.isSphere){
-          const _tcm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
-          if(_tcm){_tcm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_tcm.geometry.attributes.position.array);}
-        }
-      }
-      controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
-    }
-    const arrowHits=raycaster.intersectObjects(getArrowMeshes(),false);
-    if(arrowHits.length){
-      const aName=arrowHits[0].object.userData.axisName;
-      let shapeProp=aName;
-      if(_gizmoMode==='rotate') shapeProp='r'+aName;
-      let screenAxis,sign;
-      if(_gizmoMode==='rotate'){screenAxis='x';sign=1;}
-      else{({screenAxis,sign}=getScreenAxis(aName));}
-      const sensitivity=_gizmoMode==='rotate'?0.4:getDragSensitivity();
-      _gizmoDrag={axisName:aName,shapeProp,screenAxis,sign,
-        startVal:shapes[selectedIdx][shapeProp]||0,
-        accumulated:0,sensitivity,minVal:-Infinity};
-      if(_gizmoMode==='rotate'){
-        const WORLD_AXES={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,1,0),z:new THREE.Vector3(0,0,1)};
-        const srcMesh=meshes.find(m=>m.userData.shapeIdx===selectedIdx);
-        _gizmoDrag.worldAxis=WORLD_AXES[aName];
-        _gizmoDrag.startQuaternion=srcMesh?srcMesh.quaternion.clone():new THREE.Quaternion();
-      }
-      controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
-    }
-    const meshHits=raycaster.intersectObjects(meshes,false);
-    if(meshHits.length&&meshHits[0].object.userData.shapeIdx===selectedIdx){
-      const s=shapes[selectedIdx];
-      const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
-      const sp=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,sp);
-      _meshDrag={dragPlane:dp,offsetX:sp.x-(s.x||0),offsetZ:sp.z-(s.z||0)};
-      controls3d.enabled=false; e.preventDefault(); e.stopPropagation();
-    }
+    if(startPointerDrag(t.clientX, t.clientY)){ e.preventDefault(); e.stopPropagation(); }
   },{passive:false});
 
   window.addEventListener('touchmove',e=>{
     if(e.touches.length!==1) return;
     if(!_meshDrag&&!_scaleDrag&&!_gizmoDrag) return;
     e.preventDefault();
-    if(selectedIdx===null) return;
     const t=e.touches[0];
     const movX=_lastTouch?t.clientX-_lastTouch.x:0;
     const movY=_lastTouch?t.clientY-_lastTouch.y:0;
     _lastTouch={x:t.clientX,y:t.clientY};
-    if(_meshDrag){
-      raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
-      const curPt=new THREE.Vector3();
-      if(!raycaster.ray.intersectPlane(_meshDrag.dragPlane,curPt)) return;
-      const s=shapes[selectedIdx];
-      s.x=parseFloat((curPt.x-_meshDrag.offsetX).toFixed(3));
-      s.z=parseFloat((curPt.z-_meshDrag.offsetZ).toFixed(3));
-      updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
-      rebuildMeshes(); return;
-    }
-    if(_scaleDrag){
-      raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
-      if(Math.abs(raycaster.ray.direction.dot(_scaleDrag.dragPlane.normal))<0.08) return;
-      const curPt=new THREE.Vector3();
-      if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
-      const s=shapes[selectedIdx];
-      if(_scaleDrag.kind==='height'){
-        if(_scaleDrag.isSphere){
-          const dy=curPt.y-_scaleDrag.startPt.y;
-          const newR=Math.max(0.05,parseFloat((_scaleDrag.startH*0.5+dy*0.5).toFixed(2)));
-          s.r=newR; updatePropField('prop-r',newR);
-        } else {
-          if(_scaleDrag.origPositions){
-            const targetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
-            applyHeightDeform(s,_scaleDrag.startMinObjY,_scaleDrag.startMaxObjY,targetMaxObjY,_scaleDrag.origPositions);
-            updatePropField('prop-sy',parseFloat((s.customYMax-s.customYMin).toFixed(2)));
-          }
-        }
-      } else {
-        const ax=_scaleDrag.anchorX,az=_scaleDrag.anchorZ;
-        const MIN_AABB=0.15;
-        const dragX=curPt.x+_scaleDrag.offsetX, dragZ=curPt.z+_scaleDrag.offsetZ;
-        const cx2=_scaleDrag.sideX<0?Math.min(dragX,ax-MIN_AABB):Math.max(dragX,ax+MIN_AABB);
-        const cz2=_scaleDrag.sideZ<0?Math.min(dragZ,az-MIN_AABB):Math.max(dragZ,az+MIN_AABB);
-        const newAABBW=Math.abs(cx2-ax),newAABBD=Math.abs(cz2-az);
-        const newCx=(cx2+ax)*0.5,newCz=(cz2+az)*0.5;
-        if(_scaleDrag.isSphere){
-          const newSize=Math.max(0.1,parseFloat(((newAABBW+newAABBD)*0.5).toFixed(2)));
-          const newR=parseFloat((newSize*0.5).toFixed(2));
-          s.r=newR;
-          s.x=parseFloat((newCx-newR).toFixed(3));
-          s.z=parseFloat((newCz-newR).toFixed(3));
-          updatePropField('prop-r',newR);
-          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
-        } else if(_scaleDrag.origPositions){
-          const scaleX=newAABBW/_scaleDrag.startAABBW, scaleZ=newAABBD/_scaleDrag.startAABBD;
-          applyFootprintDeform(s,ax,az,scaleX,scaleZ,_scaleDrag.origPositions);
-          updatePropField('prop-sx',parseFloat(newAABBW.toFixed(2)));
-          updatePropField('prop-sz',parseFloat(newAABBD.toFixed(2)));
-        }
-      }
-      rebuildMeshes(); return;
-    }
-    if(_gizmoDrag){
-      const pixelDelta=_gizmoMode==='rotate'?(movX-movY):(_gizmoDrag.screenAxis==='x'?movX:movY);
-      _gizmoDrag.accumulated+=pixelDelta;
-      const worldDelta=_gizmoDrag.accumulated*_gizmoDrag.sensitivity*_gizmoDrag.sign;
-      if(_gizmoMode==='rotate'&&_gizmoDrag.worldAxis){
-        const totalRad=worldDelta*Math.PI/180;
-        const rotQ=new THREE.Quaternion().setFromAxisAngle(_gizmoDrag.worldAxis,totalRad);
-        const resultQ=rotQ.multiply(_gizmoDrag.startQuaternion.clone());
-        const euler=new THREE.Euler().setFromQuaternion(resultQ,'ZYX');
-        const s=shapes[selectedIdx];
-        s.rx=parseFloat((euler.x*180/Math.PI).toFixed(2));
-        s.ry=parseFloat((euler.y*180/Math.PI).toFixed(2));
-        s.rz=parseFloat((euler.z*180/Math.PI).toFixed(2));
-        rebuildMeshes();
-        updatePropField('prop-rx',s.rx);
-        updatePropField('prop-ry',s.ry);
-        updatePropField('prop-rz',s.rz);
-      } else {
-        let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
-        if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
-        shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
-        rebuildMeshes();
-        updatePropField('prop-p'+_gizmoDrag.axisName,newVal);
-      }
-    }
+    processPointerMove(t.clientX, t.clientY, movX, movY);
   },{passive:false});
 
   window.addEventListener('touchend',e=>{
     const t=e.changedTouches[0];
-    if(_meshDrag){
-      const mdx=_mouseDownPos?t.clientX-_mouseDownPos.x:99;
-      const mdy=_mouseDownPos?t.clientY-_mouseDownPos.y:99;
-      const wasDrag=Math.hypot(mdx,mdy)>5;
-      _meshDrag=null; controls3d.enabled=true;
-      if(wasDrag){_mouseDownPos=null;_lastTouch=null;return;}
+    if(endPointerDrag(t.clientX, t.clientY, _mouseDownPos)){
+      _mouseDownPos=null; _lastTouch=null;
+      return;
     }
-    if(_scaleDrag){
-      if(selectedIdx!==null&&!_scaleDrag.isSphere){
-        if(_scaleDrag.kind==='height') bakeHeightDeform(shapes[selectedIdx]);
-        if(_scaleDrag.kind==='corner') bakeFootprintDeform(shapes[selectedIdx]);
-        rebuildMeshes();
-      }
-      _scaleDrag=null; controls3d.enabled=true;
-    }
-    if(_gizmoDrag){_gizmoDrag=null; setArrowHover(null); controls3d.enabled=true;}
     _lastTouch=null;
     if(!_mouseDownPos) return;
     const dx=t.clientX-_mouseDownPos.x,dy=t.clientY-_mouseDownPos.y;
     _mouseDownPos=null;
     if(Math.hypot(dx,dy)>5) return;
-    raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
-    const arrowHits2=raycaster.intersectObjects(getArrowMeshes(),false);
-    const sHits2=raycaster.intersectObjects(getScaleProxies(),false);
-    if(arrowHits2.length||sHits2.length) return;
-    const hits=raycaster.intersectObjects(meshes);
-    if(hits.length){
-      const hitIdx=hits[0].object.userData.shapeIdx;
-      if(hitIdx===selectedIdx){
-        if(_gizmoMode==='translate'){
-          bakeHeightDeform(shapes[selectedIdx]);
-          bakeFootprintDeform(shapes[selectedIdx]);
-        }
-        _gizmoMode=_gizmoMode==='translate'?'rotate':'translate';
-      } else {selectedIdx=hitIdx;_gizmoMode='translate';}
-    } else {selectedIdx=null;_gizmoMode='translate';}
-    rebuildMeshes(); renderProps();
+    handlePointerClick(t.clientX, t.clientY);
   });
 
   // ── Render loop ──────────────────────────────────────────────────────────────
