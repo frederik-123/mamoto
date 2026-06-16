@@ -492,7 +492,7 @@ function open3DEditor(item, deps = {}){
   scene3d.fog = new THREE.FogExp2(0xe8eef7, 0.03);
 
   camera3d = new THREE.PerspectiveCamera(45, W/H, 0.1, 200);
-  camera3d.position.set(0, 9, 22);
+  camera3d.position.set(0, 4.5, 11);
   camera3d.lookAt(0, 0, 0);
 
   controls3d = new OrbitControls(camera3d, renderer3d.domElement);
@@ -569,23 +569,6 @@ function open3DEditor(item, deps = {}){
       }
     }
     return {x0:minX,z0:minZ,x1:maxX,z1:maxZ};
-  }
-
-  function computeCornerScale(s,newAABBW,newAABBD,startSx,startSz,startAABBW,startAABBD){
-    const q=new THREE.Quaternion().setFromEuler(
-      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
-    const me=new THREE.Matrix4().makeRotationFromQuaternion(q).elements;
-    const hy=(s.sy||1)*0.5;
-    const a=Math.abs(me[0]),b=Math.abs(me[8]),c=Math.abs(me[2]),d=Math.abs(me[10]);
-    const Wp=newAABBW*0.5-Math.abs(me[4])*hy;
-    const Dp=newAABBD*0.5-Math.abs(me[6])*hy;
-    const det=a*d-b*c;
-    if(Math.abs(det)>=0.01){
-      const hx_raw=(Wp*d-Dp*b)/det, hz_raw=(Dp*a-Wp*c)/det;
-      if(hx_raw>0&&hz_raw>0) return {hx:hx_raw,hz:hz_raw};
-    }
-    const scale=Math.sqrt((newAABBW*newAABBD)/Math.max(0.001,startAABBW*startAABBD));
-    return {hx:Math.max(0.05,startSx*0.5*scale),hz:Math.max(0.05,startSz*0.5*scale)};
   }
 
   function getMinObjY(s){
@@ -682,6 +665,57 @@ function open3DEditor(item, deps = {}){
     }
     s.sy=parseFloat(visH.toFixed(3));
     s.y=parseFloat(s.customYMin.toFixed(3));
+  }
+
+  // Vertex-level world-space XZ scaling, anchored at a fixed world corner (anchorX,anchorZ).
+  // World Y of every vertex is left untouched, so absolute height never changes — for a
+  // tilted box this warps the footprint into a general prism instead of a rectangular box.
+  function applyFootprintDeform(s, anchorX, anchorZ, scaleX, scaleZ, origPositions){
+    const keepYMin=getMinObjY(s), keepYMax=getMaxObjY(s);
+    const cx=(s.x||0)+(s.sx||1)*0.5, cy=(s.y||0)+(s.sy||1)*0.5, cz=(s.z||0)+(s.sz||1)*0.5;
+    const q=new THREE.Quaternion().setFromEuler(
+      new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    const mw=new THREE.Matrix4().compose(new THREE.Vector3(cx,cy,cz),q,new THREE.Vector3(1,1,1));
+    const mwInv=mw.clone().invert();
+    const n=origPositions.length/3;
+    const deformed=new Float32Array(origPositions.length);
+    const v=new THREE.Vector3();
+    for(let k=0;k<n;k++){
+      v.set(origPositions[k*3],origPositions[k*3+1],origPositions[k*3+2]);
+      v.applyMatrix4(mw);
+      v.x=anchorX+scaleX*(v.x-anchorX);
+      v.z=anchorZ+scaleZ*(v.z-anchorZ);
+      v.applyMatrix4(mwInv);
+      deformed[k*3]=v.x; deformed[k*3+1]=v.y; deformed[k*3+2]=v.z;
+    }
+    s.customPositions=deformed;
+    s.customYMin=keepYMin;
+    s.customYMax=keepYMax;
+    s._footprintDeformed=true;
+  }
+
+  // Bake visual footprint (AABB) into s.sx/s.sz/s.x/s.z and re-center customPositions,
+  // mirroring bakeHeightDeform. Gated on _footprintDeformed so a box that only ever had a
+  // height deform (still a symmetric footprint) never gets its true sx/sz overwritten by
+  // an unrelated rotated-AABB measurement.
+  function bakeFootprintDeform(s){
+    if(!s.customPositions||!s._footprintDeformed) return;
+    const {x0,z0,x1,z1}=getFootprintAABB(s);
+    const visW=x1-x0, visD=z1-z0;
+    const old_cx=(s.x||0)+(s.sx||1)*0.5, old_cz=(s.z||0)+(s.sz||1)*0.5;
+    const new_cx=x0+visW*0.5, new_cz=z0+visD*0.5;
+    const delta_cx=old_cx-new_cx, delta_cz=old_cz-new_cz;
+    if(Math.abs(delta_cx)>1e-9||Math.abs(delta_cz)>1e-9){
+      const q=new THREE.Quaternion().setFromEuler(
+        new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+      const shift=new THREE.Vector3(delta_cx,0,delta_cz).applyQuaternion(q.clone().conjugate());
+      const p=s.customPositions;
+      for(let k=0;k<p.length/3;k++){p[k*3]+=shift.x;p[k*3+1]+=shift.y;p[k*3+2]+=shift.z;}
+    }
+    s.sx=parseFloat(visW.toFixed(3));
+    s.sz=parseFloat(visD.toFixed(3));
+    s.x=parseFloat(x0.toFixed(3));
+    s.z=parseFloat(z0.toFixed(3));
   }
 
   function rebuildMeshes(){
@@ -1068,14 +1102,27 @@ function open3DEditor(item, deps = {}){
         {const _hm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
         if(_hm){_hm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_hm.geometry.attributes.position.array);}}
       } else {
-        const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        // The corner handles sit at bottomY = getMinObjY(s), which for a box tilted around
+        // X/Z is BELOW s.y (the box's nominal, untilted floor). A drag plane at s.y would
+        // intersect the mouse ray far from where the handle actually is (parallax), so the
+        // plane must pass through the handles' true height.
+        const dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0),-getMinObjY(s));
         const startAABB=getFootprintAABB(s);
         const _cSP=new THREE.Vector3(); raycaster.ray.intersectPlane(dragPlane,_cSP);
+        // The proxy's own position is the handle's exact corner — the actual click point
+        // (anywhere inside the generous hit-box) is almost never exactly on it. Track the
+        // offset so the drag is relative to the click, not an absolute snap to it.
+        const _cornerPos=scaleHits[0].object.position;
         _scaleDrag={kind:'corner', anchorX:ud.anchorX, anchorZ:ud.anchorZ,
           dragPlane, isSphere:ud.isSphere,
-          startSx:s.sx||1, startSz:s.sz||1,
-          startAABBW:startAABB.x1-startAABB.x0, startAABBD:startAABB.z1-startAABB.z0,
-          sideX:_cSP.x<ud.anchorX?-1:1, sideZ:_cSP.z<ud.anchorZ?-1:1};
+          startAABBW:Math.max(0.001,startAABB.x1-startAABB.x0),
+          startAABBD:Math.max(0.001,startAABB.z1-startAABB.z0),
+          sideX:_cornerPos.x<ud.anchorX?-1:1, sideZ:_cornerPos.z<ud.anchorZ?-1:1,
+          offsetX:_cornerPos.x-_cSP.x, offsetZ:_cornerPos.z-_cSP.z};
+        if(!ud.isSphere){
+          const _cm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
+          if(_cm){_cm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_cm.geometry.attributes.position.array);}
+        }
       }
       controls3d.enabled=false;
       renderer3d.domElement.style.cursor='grabbing';
@@ -1167,6 +1214,10 @@ function open3DEditor(item, deps = {}){
       raycaster.setFromCamera(new THREE.Vector2(
         ((e.clientX-rect.left)/rect.width)*2-1,
         -((e.clientY-rect.top)/rect.height)*2+1),camera3d);
+      // A ray nearly parallel to the drag plane makes the intersection numerically
+      // unstable (tiny mouse/camera changes swing the result wildly) — skip such
+      // frames instead of applying a wild point, which is what causes handles to jump.
+      if(Math.abs(raycaster.ray.direction.dot(_scaleDrag.dragPlane.normal))<0.08) return;
       const curPt=new THREE.Vector3();
       if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
@@ -1183,15 +1234,11 @@ function open3DEditor(item, deps = {}){
           }
         }
       } else {
-        if(s.customPositions&&s.customYMin!==undefined&&s.customYMax!==undefined){
-          s.sy=parseFloat((s.customYMax-s.customYMin).toFixed(3));
-          updatePropField('prop-sy',s.sy);
-        }
-        delete s.customPositions; delete s.customYMin; delete s.customYMax;
         const ax=_scaleDrag.anchorX, az=_scaleDrag.anchorZ;
         const MIN_AABB=0.15;
-        const cx2=_scaleDrag.sideX<0?Math.min(curPt.x,ax-MIN_AABB):Math.max(curPt.x,ax+MIN_AABB);
-        const cz2=_scaleDrag.sideZ<0?Math.min(curPt.z,az-MIN_AABB):Math.max(curPt.z,az+MIN_AABB);
+        const dragX=curPt.x+_scaleDrag.offsetX, dragZ=curPt.z+_scaleDrag.offsetZ;
+        const cx2=_scaleDrag.sideX<0?Math.min(dragX,ax-MIN_AABB):Math.max(dragX,ax+MIN_AABB);
+        const cz2=_scaleDrag.sideZ<0?Math.min(dragZ,az-MIN_AABB):Math.max(dragZ,az+MIN_AABB);
         const newAABBW=Math.abs(cx2-ax), newAABBD=Math.abs(cz2-az);
         const newCx=(cx2+ax)*0.5, newCz=(cz2+az)*0.5;
         if(_scaleDrag.isSphere){
@@ -1202,14 +1249,11 @@ function open3DEditor(item, deps = {}){
           s.z=parseFloat((newCz-newR).toFixed(3));
           updatePropField('prop-r',newR);
           updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
-        } else {
-          const {hx,hz}=computeCornerScale(s,newAABBW,newAABBD,
-            _scaleDrag.startSx,_scaleDrag.startSz,
-            _scaleDrag.startAABBW,_scaleDrag.startAABBD);
-          s.sx=parseFloat((hx*2).toFixed(2)); s.sz=parseFloat((hz*2).toFixed(2));
-          s.x=parseFloat((newCx-hx).toFixed(3)); s.z=parseFloat((newCz-hz).toFixed(3));
-          updatePropField('prop-sx',s.sx); updatePropField('prop-sz',s.sz);
-          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+        } else if(_scaleDrag.origPositions){
+          const scaleX=newAABBW/_scaleDrag.startAABBW, scaleZ=newAABBD/_scaleDrag.startAABBD;
+          applyFootprintDeform(s,ax,az,scaleX,scaleZ,_scaleDrag.origPositions);
+          updatePropField('prop-sx',parseFloat(newAABBW.toFixed(2)));
+          updatePropField('prop-sz',parseFloat(newAABBD.toFixed(2)));
         }
       }
       rebuildMeshes(); return;
@@ -1254,6 +1298,13 @@ function open3DEditor(item, deps = {}){
     if(_scaleDrag){
       if(selectedIdx!==null){
         if(_scaleDrag.kind==='height'&&!_scaleDrag.isSphere) bakeHeightDeform(shapes[selectedIdx]);
+        if(_scaleDrag.kind==='corner'&&!_scaleDrag.isSphere) bakeFootprintDeform(shapes[selectedIdx]);
+        // Baking mutates s.customPositions/s.sy/s.y but the rendered mesh geometry buffer
+        // isn't touched until the next rebuild. The next drag's mousedown snapshots
+        // origPositions straight from that mesh buffer, so without this rebuild here it
+        // would be stale relative to the just-baked pivot — causing a frozen Y-offset on
+        // every frame of the very next drag.
+        rebuildMeshes();
         logUsage('model_property_change',{id:item.id,shapeIdx:selectedIdx,via:'scale_corner_drag'});
       }
       _scaleDrag=null; controls3d.enabled=true; renderer3d.domElement.style.cursor='';
@@ -1292,7 +1343,10 @@ function open3DEditor(item, deps = {}){
     if(hits.length){
       const hitIdx = hits[0].object.userData.shapeIdx;
       if(hitIdx === selectedIdx){
-        if(_gizmoMode==='translate') bakeHeightDeform(shapes[selectedIdx]);
+        if(_gizmoMode==='translate'){
+          bakeHeightDeform(shapes[selectedIdx]);
+          bakeFootprintDeform(shapes[selectedIdx]);
+        }
         _gizmoMode = _gizmoMode === 'translate' ? 'rotate' : 'translate';
         logUsage('model_gizmo_mode_toggle',{id:item.id, shapeIdx:selectedIdx, mode:_gizmoMode});
       } else {
@@ -1342,14 +1396,20 @@ function open3DEditor(item, deps = {}){
         {const _thm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
         if(_thm){_thm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_thm.geometry.attributes.position.array);}}
       } else {
-        const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-(s.y||0));
+        const dp=new THREE.Plane(new THREE.Vector3(0,1,0),-getMinObjY(s));
         const startAABB=getFootprintAABB(s);
         const _tcSP=new THREE.Vector3(); raycaster.ray.intersectPlane(dp,_tcSP);
+        const _tCornerPos=scaleHits[0].object.position;
         _scaleDrag={kind:'corner',anchorX:ud.anchorX,anchorZ:ud.anchorZ,
           dragPlane:dp,isSphere:ud.isSphere,
-          startSx:s.sx||1,startSz:s.sz||1,
-          startAABBW:startAABB.x1-startAABB.x0,startAABBD:startAABB.z1-startAABB.z0,
-          sideX:_tcSP.x<ud.anchorX?-1:1,sideZ:_tcSP.z<ud.anchorZ?-1:1};
+          startAABBW:Math.max(0.001,startAABB.x1-startAABB.x0),
+          startAABBD:Math.max(0.001,startAABB.z1-startAABB.z0),
+          sideX:_tCornerPos.x<ud.anchorX?-1:1,sideZ:_tCornerPos.z<ud.anchorZ?-1:1,
+          offsetX:_tCornerPos.x-_tcSP.x,offsetZ:_tCornerPos.z-_tcSP.z};
+        if(!ud.isSphere){
+          const _tcm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
+          if(_tcm){_tcm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_tcm.geometry.attributes.position.array);}
+        }
       }
       controls3d.enabled=false; e.preventDefault(); e.stopPropagation(); return;
     }
@@ -1404,6 +1464,7 @@ function open3DEditor(item, deps = {}){
     }
     if(_scaleDrag){
       raycaster.setFromCamera(getNDC(t.clientX,t.clientY),camera3d);
+      if(Math.abs(raycaster.ray.direction.dot(_scaleDrag.dragPlane.normal))<0.08) return;
       const curPt=new THREE.Vector3();
       if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
@@ -1420,15 +1481,11 @@ function open3DEditor(item, deps = {}){
           }
         }
       } else {
-        if(s.customPositions&&s.customYMin!==undefined&&s.customYMax!==undefined){
-          s.sy=parseFloat((s.customYMax-s.customYMin).toFixed(3));
-          updatePropField('prop-sy',s.sy);
-        }
-        delete s.customPositions; delete s.customYMin; delete s.customYMax;
         const ax=_scaleDrag.anchorX,az=_scaleDrag.anchorZ;
         const MIN_AABB=0.15;
-        const cx2=_scaleDrag.sideX<0?Math.min(curPt.x,ax-MIN_AABB):Math.max(curPt.x,ax+MIN_AABB);
-        const cz2=_scaleDrag.sideZ<0?Math.min(curPt.z,az-MIN_AABB):Math.max(curPt.z,az+MIN_AABB);
+        const dragX=curPt.x+_scaleDrag.offsetX, dragZ=curPt.z+_scaleDrag.offsetZ;
+        const cx2=_scaleDrag.sideX<0?Math.min(dragX,ax-MIN_AABB):Math.max(dragX,ax+MIN_AABB);
+        const cz2=_scaleDrag.sideZ<0?Math.min(dragZ,az-MIN_AABB):Math.max(dragZ,az+MIN_AABB);
         const newAABBW=Math.abs(cx2-ax),newAABBD=Math.abs(cz2-az);
         const newCx=(cx2+ax)*0.5,newCz=(cz2+az)*0.5;
         if(_scaleDrag.isSphere){
@@ -1439,14 +1496,11 @@ function open3DEditor(item, deps = {}){
           s.z=parseFloat((newCz-newR).toFixed(3));
           updatePropField('prop-r',newR);
           updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
-        } else {
-          const {hx,hz}=computeCornerScale(s,newAABBW,newAABBD,
-            _scaleDrag.startSx,_scaleDrag.startSz,
-            _scaleDrag.startAABBW,_scaleDrag.startAABBD);
-          s.sx=parseFloat((hx*2).toFixed(2)); s.sz=parseFloat((hz*2).toFixed(2));
-          s.x=parseFloat((newCx-hx).toFixed(3)); s.z=parseFloat((newCz-hz).toFixed(3));
-          updatePropField('prop-sx',s.sx); updatePropField('prop-sz',s.sz);
-          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
+        } else if(_scaleDrag.origPositions){
+          const scaleX=newAABBW/_scaleDrag.startAABBW, scaleZ=newAABBD/_scaleDrag.startAABBD;
+          applyFootprintDeform(s,ax,az,scaleX,scaleZ,_scaleDrag.origPositions);
+          updatePropField('prop-sx',parseFloat(newAABBW.toFixed(2)));
+          updatePropField('prop-sz',parseFloat(newAABBD.toFixed(2)));
         }
       }
       rebuildMeshes(); return;
@@ -1488,7 +1542,11 @@ function open3DEditor(item, deps = {}){
       if(wasDrag){_mouseDownPos=null;_lastTouch=null;return;}
     }
     if(_scaleDrag){
-      if(selectedIdx!==null&&_scaleDrag.kind==='height'&&!_scaleDrag.isSphere) bakeHeightDeform(shapes[selectedIdx]);
+      if(selectedIdx!==null&&!_scaleDrag.isSphere){
+        if(_scaleDrag.kind==='height') bakeHeightDeform(shapes[selectedIdx]);
+        if(_scaleDrag.kind==='corner') bakeFootprintDeform(shapes[selectedIdx]);
+        rebuildMeshes();
+      }
       _scaleDrag=null; controls3d.enabled=true;
     }
     if(_gizmoDrag){_gizmoDrag=null; setArrowHover(null); controls3d.enabled=true;}
@@ -1505,7 +1563,10 @@ function open3DEditor(item, deps = {}){
     if(hits.length){
       const hitIdx=hits[0].object.userData.shapeIdx;
       if(hitIdx===selectedIdx){
-        if(_gizmoMode==='translate') bakeHeightDeform(shapes[selectedIdx]);
+        if(_gizmoMode==='translate'){
+          bakeHeightDeform(shapes[selectedIdx]);
+          bakeFootprintDeform(shapes[selectedIdx]);
+        }
         _gizmoMode=_gizmoMode==='translate'?'rotate':'translate';
       } else {selectedIdx=hitIdx;_gizmoMode='translate';}
     } else {selectedIdx=null;_gizmoMode='translate';}
@@ -1517,7 +1578,11 @@ function open3DEditor(item, deps = {}){
   function animate3d(){
     if(!animRunning) return;
     requestAnimationFrame(animate3d);
-    controls3d.update();
+    // OrbitControls.update() keeps decaying damping inertia even while .enabled is
+    // false, so any residual orbit/pan momentum from right before a handle-drag starts
+    // would otherwise keep nudging the camera (and with it, every gizmo) for a few
+    // frames. Skipping update() while disabled freezes the camera the instant a drag begins.
+    if(controls3d.enabled) controls3d.update();
     renderer3d.render(scene3d, camera3d);
   }
   animate3d();
