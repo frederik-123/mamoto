@@ -341,6 +341,7 @@ function buildSceneMeshes(scene, shapes){
     if(s.kind === 'box') geo = new THREE.BoxGeometry(s.sx||1, s.sy||1, s.sz||1);
     else if(s.kind === 'cylinder'){ geo = new THREE.CylinderGeometry(0.5,0.5,1,32); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else if(s.kind === 'pyramid'){ geo = new THREE.ConeGeometry(0.5,1,s.sides||4); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
+    else if(s.kind === 'prism'){ geo = new THREE.CylinderGeometry(0.5,0.5,1,s.sides||3); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else                 geo = new THREE.SphereGeometry((s.r||0.5), 32, 24);
     const mat = new THREE.MeshLambertMaterial({color: s.color || 0x2D5A8E});
     const mesh = new THREE.Mesh(geo, mat);
@@ -643,6 +644,20 @@ function open3DEditor(item, deps = {}){
       const extX=Math.sqrt((sW*0.5*wx.x)**2+(sH*0.5*wx.y)**2+(sD*0.5*wx.z)**2);
       const extZ=Math.sqrt((sW*0.5*wz.x)**2+(sH*0.5*wz.y)**2+(sD*0.5*wz.z)**2);
       minX=cx-extX; maxX=cx+extX; minZ=cz-extZ; maxZ=cz+extZ;
+    } else if(s.kind==='prism'){
+      // Iterate the actual N-gon vertices (top and bottom face) so the footprint AABB
+      // matches the real polygon — the box-corner fallback would overestimate because a
+      // polygon inscribed in a radius-0.5 circle only touches the ±sx/sz axis-aligned
+      // extents when N is a multiple of 4 (vertices fall exactly on the cardinal points).
+      const sH=dimY(s); const n=s.sides||3;
+      for(let k=0;k<n;k++){
+        const angle=2*Math.PI*k/n;
+        for(let yi=-1;yi<=1;yi+=2){
+          const v=new THREE.Vector3(sW*0.5*Math.sin(angle),yi*sH*0.5,sD*0.5*Math.cos(angle)).applyQuaternion(q);
+          if(cx+v.x<minX) minX=cx+v.x; if(cx+v.x>maxX) maxX=cx+v.x;
+          if(cz+v.z<minZ) minZ=cz+v.z; if(cz+v.z>maxZ) maxZ=cz+v.z;
+        }
+      }
     } else {
       const sH=dimY(s);
       const hx=sW*0.5,hy=sH*0.5,hz=sD*0.5;
@@ -820,6 +835,9 @@ function open3DEditor(item, deps = {}){
       } else if(s.kind==='pyramid'){
         geo=new THREE.ConeGeometry(0.5,1,s.sides||4);
         geo.scale(dimX(s),dimY(s),dimZ(s));
+      } else if(s.kind==='prism'){
+        geo=new THREE.CylinderGeometry(0.5,0.5,1,s.sides||3);
+        geo.scale(dimX(s),dimY(s),dimZ(s));
       } else if(s.kind==='cylinder'){
         geo=new THREE.CylinderGeometry(0.5,0.5,1,32);
         geo.scale(dimX(s),dimY(s),dimZ(s));
@@ -856,7 +874,7 @@ function open3DEditor(item, deps = {}){
       const lg=Math.round(g+(255-g)*0.55);
       const lb=Math.round(b+(255-b)*0.55);
       const edgeCol=(lr<<16)|(lg<<8)|lb;
-      if(s.kind==='box'||s.kind==='pyramid'){
+      if(s.kind==='box'||s.kind==='pyramid'||s.kind==='prism'){
         const edgeMat = new THREE.LineBasicMaterial({color:edgeCol});
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
         edges.position.copy(mesh.position);
@@ -1117,8 +1135,13 @@ function open3DEditor(item, deps = {}){
     setField('prop-sy', dimY(s));
     setField('prop-sz', dimZ(s));
     const pyrGroup = document.getElementById('prop-pyramid-group');
-    if(pyrGroup) pyrGroup.style.display = s.kind==='pyramid' ? '' : 'none';
-    if(s.kind==='pyramid') setField('prop-sides', s.sides||4);
+    const showSides = s.kind==='pyramid' || s.kind==='prism';
+    if(pyrGroup){
+      pyrGroup.style.display = showSides ? '' : 'none';
+      const lbl = pyrGroup.querySelector('label');
+      if(lbl) lbl.textContent = s.kind==='prism' ? 'Prism' : 'Pyramid';
+    }
+    if(showSides) setField('prop-sides', s.sides||(s.kind==='prism'?3:4));
     const SWATCH_COLORS = [
       '#cc2222','#22882a','#2255cc','#cc6600','#7722bb','#ccaa00','#444444',
       '#ff8888','#88dd88','#88aaff','#ffaa55','#cc88ff','#ffee66','#cccccc'
@@ -1224,9 +1247,14 @@ function open3DEditor(item, deps = {}){
     logUsage('model_shape_add',{id:item.id, kind:'pyramid', shapeCount:shapes.length});
     rebuildMeshes(); renderProps();
   });
-  ['add-prism','add-cone'].forEach(id=>{
-    document.getElementById(id).addEventListener('click',()=>toast('Coming soon'));
+  document.getElementById('add-prism').addEventListener('click',()=>{
+    pushUndo();
+    shapes.push({kind:'prism', x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, sides:3, color:'#8844cc'});
+    selectedIdx=shapes.length-1; _gizmoMode='translate';
+    logUsage('model_shape_add',{id:item.id, kind:'prism', shapeCount:shapes.length});
+    rebuildMeshes(); renderProps();
   });
+  document.getElementById('add-cone').addEventListener('click',()=>toast('Coming soon'));
   document.getElementById('btn3d-undo').addEventListener('click', undoOp);
   document.getElementById('btn3d-redo').addEventListener('click', redoOp);
   document.getElementById('btn3d-delete').addEventListener('click', deleteSelected);
