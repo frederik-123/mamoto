@@ -1008,6 +1008,10 @@ function open3DEditor(item, deps = {}){
           ?s.customYMax-s.customYMin:dimY(s);
         const RING_R=Math.sqrt((dimX(s)**2+_visH**2+dimZ(s)**2)/4)+0.5;
         const TUBE_R=0.045, PROXY_R=0.11, SEG=64;
+        // Always use the mesh pivot as the ring centre — it equals s.x+sW/2 etc. and
+        // doesn't shift when the shape rotates, unlike the AABB-derived pos which moves
+        // for deformed shapes (customPositions set) as their footprint AABB changes.
+        const ringCenter=new THREE.Vector3((s.x||0)+sW*0.5,(s.y||0)+sH*0.5,(s.z||0)+sD*0.5);
         axisDefs.forEach(({col,axisName},ai)=>{
           const visMat=new THREE.MeshLambertMaterial({color:col,side:THREE.DoubleSide});
           const ring=new THREE.Mesh(new THREE.TorusGeometry(RING_R,TUBE_R,12,SEG),visMat);
@@ -1016,8 +1020,8 @@ function open3DEditor(item, deps = {}){
             new THREE.MeshBasicMaterial({visible:false,side:THREE.DoubleSide}));
           if(axisName==='x'){ring.rotation.y=Math.PI/2; proxy.rotation.y=Math.PI/2;}
           if(axisName==='y'){ring.rotation.x=Math.PI/2; proxy.rotation.x=Math.PI/2;}
-          ring.position.copy(pos); ring.raycast=()=>{};
-          proxy.position.copy(pos); proxy.userData={isGizmo:true,arrowIdx:ai,axisName};
+          ring.position.copy(ringCenter); ring.raycast=()=>{};
+          proxy.position.copy(ringCenter); proxy.userData={isGizmo:true,arrowIdx:ai,axisName};
           scene3d.add(ring); scene3d.add(proxy);
           const HOVER_MAP={0xff3333:0xff8888,0x33cc33:0x77ee77,0x3399ff:0x77bbff};
           axisArrows.push({_visuals:[ring],_proxies:[proxy],_col:col,_hoverCol:HOVER_MAP[col]||0x888888,
