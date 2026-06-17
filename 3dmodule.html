@@ -340,6 +340,7 @@ function buildSceneMeshes(scene, shapes){
     let geo;
     if(s.kind === 'box') geo = new THREE.BoxGeometry(s.sx||1, s.sy||1, s.sz||1);
     else if(s.kind === 'cylinder'){ geo = new THREE.CylinderGeometry(0.5,0.5,1,32); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
+    else if(s.kind === 'pyramid'){ geo = new THREE.ConeGeometry(0.5,1,s.sides||4); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else                 geo = new THREE.SphereGeometry((s.r||0.5), 32, 24);
     const mat = new THREE.MeshLambertMaterial({color: s.color || 0x2D5A8E});
     const mesh = new THREE.Mesh(geo, mat);
@@ -482,6 +483,9 @@ function open3DEditor(item, deps = {}){
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Width</span><span class="prop-field-val" id="prop-sx-display">–</span></div><input class="prop-input" id="prop-sx" type="number" step="0.1" min="0.1" max="3"></div>' +
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Height</span><span class="prop-field-val" id="prop-sy-display">–</span></div><input class="prop-input" id="prop-sy" type="number" step="0.1" min="0.1" max="3"></div>' +
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Depth</span><span class="prop-field-val" id="prop-sz-display">–</span></div><input class="prop-input" id="prop-sz" type="number" step="0.1" min="0.1" max="3"></div>' +
+          '</div>' +
+          '<div class="prop-group" id="prop-pyramid-group" style="display:none"><label>Pyramid</label>' +
+          '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Sides</span><span class="prop-field-val" id="prop-sides-display">–</span></div><input class="prop-input" id="prop-sides" type="number" step="1" min="3" max="7"></div>' +
           '</div>' +
           '<div class="prop-group"><label>Colour</label>' +
             '<div class="prop-swatches" id="prop-swatches"></div>' +
@@ -813,6 +817,9 @@ function open3DEditor(item, deps = {}){
       let geo;
       if(s.kind==='box'){
         geo=new THREE.BoxGeometry(dimX(s),dimY(s),dimZ(s));
+      } else if(s.kind==='pyramid'){
+        geo=new THREE.ConeGeometry(0.5,1,s.sides||4);
+        geo.scale(dimX(s),dimY(s),dimZ(s));
       } else if(s.kind==='cylinder'){
         geo=new THREE.CylinderGeometry(0.5,0.5,1,32);
         geo.scale(dimX(s),dimY(s),dimZ(s));
@@ -849,7 +856,7 @@ function open3DEditor(item, deps = {}){
       const lg=Math.round(g+(255-g)*0.55);
       const lb=Math.round(b+(255-b)*0.55);
       const edgeCol=(lr<<16)|(lg<<8)|lb;
-      if(s.kind==='box'){
+      if(s.kind==='box'||s.kind==='pyramid'){
         const edgeMat = new THREE.LineBasicMaterial({color:edgeCol});
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
         edges.position.copy(mesh.position);
@@ -1109,6 +1116,9 @@ function open3DEditor(item, deps = {}){
     setField('prop-sx', dimX(s));
     setField('prop-sy', dimY(s));
     setField('prop-sz', dimZ(s));
+    const pyrGroup = document.getElementById('prop-pyramid-group');
+    if(pyrGroup) pyrGroup.style.display = s.kind==='pyramid' ? '' : 'none';
+    if(s.kind==='pyramid') setField('prop-sides', s.sides||4);
     const SWATCH_COLORS = [
       '#cc2222','#22882a','#2255cc','#cc6600','#7722bb','#ccaa00','#444444',
       '#ff8888','#88dd88','#88aaff','#ffaa55','#cc88ff','#ffee66','#cccccc'
@@ -1167,6 +1177,24 @@ function open3DEditor(item, deps = {}){
   bindProp('prop-px','x');  bindProp('prop-py','y');  bindProp('prop-pz','z');
   bindProp('prop-sx','sx'); bindProp('prop-sy','sy'); bindProp('prop-sz','sz');
 
+  (()=>{
+    const sidesInput = document.getElementById('prop-sides');
+    const sidesDisp  = document.getElementById('prop-sides-display');
+    if(!sidesInput) return;
+    sidesInput.addEventListener('change', ()=>{
+      if(selectedIdx===null) return;
+      const v = Math.min(7, Math.max(3, parseInt(sidesInput.value)||4));
+      sidesInput.value = v;
+      if(sidesDisp) sidesDisp.textContent = v;
+      pushUndo();
+      const s = shapes[selectedIdx];
+      s.sides = v;
+      delete s.customPositions; delete s.customYMin; delete s.customYMax; delete s._footprintDeformed;
+      logUsage('model_property_change',{id:item.id, shapeIdx:selectedIdx, property:'sides', value:v});
+      rebuildMeshes();
+    });
+  })();
+
   // ── Shape add buttons ────────────────────────────────────────────────────────
   document.getElementById('add-box').addEventListener('click',()=>{
     pushUndo();
@@ -1189,7 +1217,14 @@ function open3DEditor(item, deps = {}){
     logUsage('model_shape_add',{id:item.id, kind:'cylinder', shapeCount:shapes.length});
     rebuildMeshes(); renderProps();
   });
-  ['add-pyramid','add-prism','add-cone'].forEach(id=>{
+  document.getElementById('add-pyramid').addEventListener('click',()=>{
+    pushUndo();
+    shapes.push({kind:'pyramid', x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, sides:4, color:'#ccaa00'});
+    selectedIdx=shapes.length-1; _gizmoMode='translate';
+    logUsage('model_shape_add',{id:item.id, kind:'pyramid', shapeCount:shapes.length});
+    rebuildMeshes(); renderProps();
+  });
+  ['add-prism','add-cone'].forEach(id=>{
     document.getElementById(id).addEventListener('click',()=>toast('Coming soon'));
   });
   document.getElementById('btn3d-undo').addEventListener('click', undoOp);
