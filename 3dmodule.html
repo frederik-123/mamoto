@@ -339,6 +339,7 @@ function buildSceneMeshes(scene, shapes){
   shapes.forEach(s=>{
     let geo;
     if(s.kind === 'box') geo = new THREE.BoxGeometry(s.sx||1, s.sy||1, s.sz||1);
+    else if(s.kind === 'cylinder'){ geo = new THREE.CylinderGeometry(0.5,0.5,1,32); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else                 geo = new THREE.SphereGeometry((s.r||0.5), 32, 24);
     const mat = new THREE.MeshLambertMaterial({color: s.color || 0x2D5A8E});
     const mesh = new THREE.Mesh(geo, mat);
@@ -812,6 +813,9 @@ function open3DEditor(item, deps = {}){
       let geo;
       if(s.kind==='box'){
         geo=new THREE.BoxGeometry(dimX(s),dimY(s),dimZ(s));
+      } else if(s.kind==='cylinder'){
+        geo=new THREE.CylinderGeometry(0.5,0.5,1,32);
+        geo.scale(dimX(s),dimY(s),dimZ(s));
       } else {
         // Unit sphere, scaled to the shape's true dimensions — bakes sx/sy/sz into the
         // vertex positions directly (same idea as BoxGeometry(sx,sy,sz)), so a non-uniform
@@ -1178,7 +1182,14 @@ function open3DEditor(item, deps = {}){
     logUsage('model_shape_add',{id:item.id, kind:'sphere', shapeCount:shapes.length});
     rebuildMeshes(); renderProps();
   });
-  ['add-cylinder','add-pyramid','add-prism','add-cone'].forEach(id=>{
+  document.getElementById('add-cylinder').addEventListener('click',()=>{
+    pushUndo();
+    shapes.push({kind:'cylinder', x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, color:'#22882a'});
+    selectedIdx = shapes.length-1; _gizmoMode='translate';
+    logUsage('model_shape_add',{id:item.id, kind:'cylinder', shapeCount:shapes.length});
+    rebuildMeshes(); renderProps();
+  });
+  ['add-pyramid','add-prism','add-cone'].forEach(id=>{
     document.getElementById(id).addEventListener('click',()=>toast('Coming soon'));
   });
   document.getElementById('btn3d-undo').addEventListener('click', undoOp);
