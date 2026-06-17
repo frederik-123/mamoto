@@ -94,7 +94,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);user-se
 }
 
 /* ── 3D editor layout ────────────────────────────────────────────────────── */
-#editor3d-wrap{display:flex;gap:0;height:580px;border:1.5px solid var(--border-soft);border-radius:9px;overflow:hidden}
+#editor3d-wrap{display:flex;gap:0;height:580px;border:1.5px solid var(--border-soft);border-radius:9px;overflow:hidden;position:relative}
 #editor3d-sidebar{
   width:100px;flex-shrink:0;background:var(--surface2);
   border-right:1px solid var(--border-soft);
@@ -113,9 +113,26 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);user-se
 #editor3d-canvas-wrap{flex:1;position:relative;background:#e8eef7;cursor:grab}
 #editor3d-canvas-wrap.grabbing{cursor:grabbing}
 #editor3d-canvas{width:100%;height:100%;display:block}
+/* Floats above editor3d-canvas-wrap as an overlay — slid fully clear except for the
+   toggle strip when collapsed, via transform (not width/flex), so the canvas's own
+   flex sizing — and therefore the 3D scene's render size and camera — never changes. */
+#editor3d-props-pane{
+  position:absolute;top:0;right:0;height:100%;display:flex;z-index:5;
+  transform:translateX(280px);transition:transform .18s ease;
+  box-shadow:-6px 0 16px rgba(0,0,0,.12);
+}
+#editor3d-props-pane.expanded{transform:translateX(0)}
+#editor3d-props-toggle{
+  flex-shrink:0;width:18px;border:none;border-left:1px solid var(--border-soft);
+  background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  color:var(--text3);padding:0;transition:background .12s,color .12s;
+}
+#editor3d-props-toggle:hover{background:var(--accent-light);color:var(--accent)}
+#editor3d-props-toggle svg{transition:transform .18s ease}
+#editor3d-props-pane.expanded #editor3d-props-toggle svg{transform:rotate(180deg)}
 #editor3d-props{
   width:280px;flex-shrink:0;background:var(--surface2);
-  border-left:1px solid var(--border-soft);padding:14px;overflow-y:auto;
+  height:100%;box-sizing:border-box;padding:14px;overflow-y:auto;
 }
 #editor3d-props h3{font-size:11px;font-weight:600;text-transform:uppercase;
   letter-spacing:.05em;color:var(--text3);margin-bottom:10px}
@@ -422,7 +439,11 @@ function open3DEditor(item, deps = {}){
       '<div id="editor3d-canvas-wrap"><canvas id="editor3d-canvas"></canvas>' +
         '<div id="editor3d-hint">Orbit: drag · Zoom: scroll · Select: click</div>' +
       '</div>' +
-      '<div id="editor3d-props">' +
+      '<div id="editor3d-props-pane">' +
+        '<button id="editor3d-props-toggle" title="Show properties">' +
+          '<svg width="9" height="14" viewBox="0 0 9 14" xmlns="http://www.w3.org/2000/svg"><path d="M7.5 1 L1.5 7 L7.5 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '</button>' +
+        '<div id="editor3d-props">' +
         '<h3>Properties</h3>' +
         '<div id="editor3d-empty-props">Select a shape to edit its properties.</div>' +
         '<div id="editor3d-prop-fields" style="display:none">' +
@@ -436,18 +457,16 @@ function open3DEditor(item, deps = {}){
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#228822">Y Position</span><span class="prop-field-val" id="prop-py-display">–</span></div><input class="prop-input" id="prop-py" type="number" step="0.1" min="-3" max="3"></div>' +
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label" style="color:#2266cc">Z Position</span><span class="prop-field-val" id="prop-pz-display">–</span></div><input class="prop-input" id="prop-pz" type="number" step="0.1" min="-3" max="3"></div>' +
           '</div>' +
-          '<div class="prop-group" id="prop-box-group"><label>Size</label>' +
+          '<div class="prop-group" id="prop-size-group"><label>Size</label>' +
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Width</span><span class="prop-field-val" id="prop-sx-display">–</span></div><input class="prop-input" id="prop-sx" type="number" step="0.1" min="0.1" max="3"></div>' +
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Height</span><span class="prop-field-val" id="prop-sy-display">–</span></div><input class="prop-input" id="prop-sy" type="number" step="0.1" min="0.1" max="3"></div>' +
           '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Depth</span><span class="prop-field-val" id="prop-sz-display">–</span></div><input class="prop-input" id="prop-sz" type="number" step="0.1" min="0.1" max="3"></div>' +
-          '</div>' +
-          '<div class="prop-group" id="prop-sphere-group" style="display:none"><label>Radius</label>' +
-          '<div class="prop-field"><div class="prop-field-header"><span class="prop-field-label">Radius</span><span class="prop-field-val" id="prop-r-display">–</span></div><input class="prop-input" id="prop-r" type="number" step="0.1" min="0.1" max="3"></div>' +
           '</div>' +
           '<div class="prop-group"><label>Colour</label>' +
             '<div class="prop-swatches" id="prop-swatches"></div>' +
           '</div>' +
         '</div>' +
+      '</div>' +
       '</div>' +
     '</div>';
 
@@ -482,7 +501,13 @@ function open3DEditor(item, deps = {}){
   const H = canvasWrap3d.clientHeight || 480;
 
   renderer3d = new THREE.WebGLRenderer({canvas: canvas3d, antialias:true});
-  renderer3d.setSize(W, H);
+  // updateStyle=false: leave the canvas's CSS box (width:100%/height:100% from the
+  // stylesheet) alone and only set the internal render-resolution attributes. Otherwise
+  // setSize writes an inline pixel width that fights the flex layout — the canvas-wrap is
+  // a flex item with the default min-width:auto, so a fixed-width canvas child can lock
+  // in a "minimum content width" on it, which then refuses to shrink when the properties
+  // panel tries to expand into that space.
+  renderer3d.setSize(W, H, false);
   renderer3d.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer3d.shadowMap.enabled = true;
   renderer3d.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -503,6 +528,25 @@ function open3DEditor(item, deps = {}){
   controls3d.maxDistance = 60;
   controls3d.target.set(0, 0, 0);
   controls3d.update();
+
+  // The properties panel starts collapsed and the canvas-wrap is flex:1, so toggling it
+  // (or any future container resize) changes the canvas's actual pixel size — without
+  // this, the renderer keeps rendering at its init-time resolution and the canvas element
+  // just gets stretched/squished via CSS to fit, distorting the 3D view.
+  const propsPane   = document.getElementById('editor3d-props-pane');
+  const propsToggle = document.getElementById('editor3d-props-toggle');
+  propsToggle.addEventListener('click', ()=>{
+    const expanded = propsPane.classList.toggle('expanded');
+    propsToggle.title = expanded ? 'Hide properties' : 'Show properties';
+  });
+  const resizeObserver3d = new ResizeObserver(()=>{
+    const w = canvasWrap3d.clientWidth, h = canvasWrap3d.clientHeight;
+    if(!w || !h) return;
+    camera3d.aspect = w/h;
+    camera3d.updateProjectionMatrix();
+    renderer3d.setSize(w, h, false);
+  });
+  resizeObserver3d.observe(canvasWrap3d);
 
   scene3d.add(new THREE.AmbientLight(0xffffff, 0.5));
   const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -540,14 +584,16 @@ function open3DEditor(item, deps = {}){
     scaleHandles = [];
   }
 
+  // Canonical shape dimensions for both kinds: a box's sx/sy/sz default to 1 if unset; a
+  // sphere's default to its legacy radius field (2r) until the first deform bakes real
+  // sx/sy/sz onto it. Once set, sx/sy/sz are authoritative for either kind.
+  function dimX(s){ return s.sx || (s.kind==='sphere' ? (s.r||0.5)*2 : 1); }
+  function dimY(s){ return s.sy || (s.kind==='sphere' ? (s.r||0.5)*2 : 1); }
+  function dimZ(s){ return s.sz || (s.kind==='sphere' ? (s.r||0.5)*2 : 1); }
+
   function getFootprintAABB(s){
-    const sW=s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
-    const sD=s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+    const sW=dimX(s), sD=dimZ(s);
     const cx=(s.x||0)+sW*0.5, cz=(s.z||0)+sD*0.5;
-    if(s.kind!=='box'){
-      const r=s.r||0.5;
-      return {x0:cx-r,z0:cz-r,x1:cx+r,z1:cz+r};
-    }
     const q=new THREE.Quaternion().setFromEuler(
       new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
     let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
@@ -559,8 +605,21 @@ function open3DEditor(item, deps = {}){
         if(wx<minX) minX=wx; if(wx>maxX) maxX=wx;
         if(wz<minZ) minZ=wz; if(wz>maxZ) maxZ=wz;
       }
+    } else if(s.kind==='sphere'){
+      // Closed-form extent of a (possibly rotated) ellipsoid along a world axis: rotate
+      // the axis into local space (inverse rotation), weight each local component by its
+      // semi-axis, then take the vector length — the ellipsoid analogue of the box's
+      // 8-corner loop, exact because an ellipsoid's extent in any direction d is
+      // ||diag(hx,hy,hz) * R^-1 * d||.
+      const sH=dimY(s);
+      const qInv=q.clone().conjugate();
+      const wx=new THREE.Vector3(1,0,0).applyQuaternion(qInv);
+      const wz=new THREE.Vector3(0,0,1).applyQuaternion(qInv);
+      const extX=Math.sqrt((sW*0.5*wx.x)**2+(sH*0.5*wx.y)**2+(sD*0.5*wx.z)**2);
+      const extZ=Math.sqrt((sW*0.5*wz.x)**2+(sH*0.5*wz.y)**2+(sD*0.5*wz.z)**2);
+      minX=cx-extX; maxX=cx+extX; minZ=cz-extZ; maxZ=cz+extZ;
     } else {
-      const sH=s.sy||1;
+      const sH=dimY(s);
       const hx=sW*0.5,hy=sH*0.5,hz=sD*0.5;
       for(let xi=-1;xi<=1;xi+=2) for(let yi=-1;yi<=1;yi+=2) for(let zi=-1;zi<=1;zi+=2){
         const v=new THREE.Vector3(xi*hx,yi*hy,zi*hz).applyQuaternion(q);
@@ -573,7 +632,7 @@ function open3DEditor(item, deps = {}){
 
   function getMinObjY(s){
     if(s.customPositions){
-      const cy=(s.y||0)+(s.sy||1)*0.5;
+      const cy=(s.y||0)+dimY(s)*0.5;
       const q=new THREE.Quaternion().setFromEuler(
         new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
       const p=s.customPositions; let minY=Infinity; const v=new THREE.Vector3();
@@ -583,12 +642,15 @@ function open3DEditor(item, deps = {}){
       }
       return minY;
     }
-    const sH=s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
-    if(s.kind!=='box') return (s.y||0);
-    const sW=s.sx||1, sD=s.sz||1;
+    const sW=dimX(s), sH=dimY(s), sD=dimZ(s);
     const posY=(s.y||0)+sH*0.5;
     const q=new THREE.Quaternion().setFromEuler(
       new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    if(s.kind==='sphere'){
+      const w=new THREE.Vector3(0,1,0).applyQuaternion(q.clone().conjugate());
+      const ext=Math.sqrt((sW*0.5*w.x)**2+(sH*0.5*w.y)**2+(sD*0.5*w.z)**2);
+      return posY-ext;
+    }
     let minY=Infinity;
     for(let xi=-1;xi<=1;xi+=2) for(let yi=-1;yi<=1;yi+=2) for(let zi=-1;zi<=1;zi+=2){
       const v=new THREE.Vector3(xi*sW*0.5,yi*sH*0.5,zi*sD*0.5).applyQuaternion(q);
@@ -599,7 +661,7 @@ function open3DEditor(item, deps = {}){
 
   function getMaxObjY(s){
     if(s.customPositions){
-      const cy=(s.y||0)+(s.sy||1)*0.5;
+      const cy=(s.y||0)+dimY(s)*0.5;
       const q=new THREE.Quaternion().setFromEuler(
         new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
       const p=s.customPositions; let maxY=-Infinity; const v=new THREE.Vector3();
@@ -609,12 +671,15 @@ function open3DEditor(item, deps = {}){
       }
       return maxY;
     }
-    const sH=s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
-    if(s.kind!=='box') return (s.y||0)+sH;
-    const sW=s.sx||1, sD=s.sz||1;
+    const sW=dimX(s), sH=dimY(s), sD=dimZ(s);
     const posY=(s.y||0)+sH*0.5;
     const q=new THREE.Quaternion().setFromEuler(
       new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
+    if(s.kind==='sphere'){
+      const w=new THREE.Vector3(0,1,0).applyQuaternion(q.clone().conjugate());
+      const ext=Math.sqrt((sW*0.5*w.x)**2+(sH*0.5*w.y)**2+(sD*0.5*w.z)**2);
+      return posY+ext;
+    }
     let maxY=-Infinity;
     for(let xi=-1;xi<=1;xi+=2) for(let yi=-1;yi<=1;yi+=2) for(let zi=-1;zi<=1;zi+=2){
       const v=new THREE.Vector3(xi*sW*0.5,yi*sH*0.5,zi*sD*0.5).applyQuaternion(q);
@@ -627,7 +692,7 @@ function open3DEditor(item, deps = {}){
     const newH = Math.max(0.05, targetMaxObjY - startMinObjY);
     const oldH = Math.max(0.001, startMaxObjY - startMinObjY);
     const scaleY = newH / oldH;
-    const cx=(s.x||0)+(s.sx||1)*0.5, cy=(s.y||0)+(s.sy||1)*0.5, cz=(s.z||0)+(s.sz||1)*0.5;
+    const cx=(s.x||0)+dimX(s)*0.5, cy=(s.y||0)+dimY(s)*0.5, cz=(s.z||0)+dimZ(s)*0.5;
     const q=new THREE.Quaternion().setFromEuler(
       new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
     const mw=new THREE.Matrix4().compose(new THREE.Vector3(cx,cy,cz),q,new THREE.Vector3(1,1,1));
@@ -653,7 +718,7 @@ function open3DEditor(item, deps = {}){
   function bakeHeightDeform(s){
     if(!s.customPositions||s.customYMin===undefined||s.customYMax===undefined) return;
     const visH=s.customYMax-s.customYMin;
-    const old_cy=(s.y||0)+(s.sy||1)*0.5;
+    const old_cy=(s.y||0)+dimY(s)*0.5;
     const new_cy=s.customYMin+visH*0.5;
     const delta_cy=old_cy-new_cy;
     if(Math.abs(delta_cy)>1e-9){
@@ -672,7 +737,7 @@ function open3DEditor(item, deps = {}){
   // tilted box this warps the footprint into a general prism instead of a rectangular box.
   function applyFootprintDeform(s, anchorX, anchorZ, scaleX, scaleZ, origPositions){
     const keepYMin=getMinObjY(s), keepYMax=getMaxObjY(s);
-    const cx=(s.x||0)+(s.sx||1)*0.5, cy=(s.y||0)+(s.sy||1)*0.5, cz=(s.z||0)+(s.sz||1)*0.5;
+    const cx=(s.x||0)+dimX(s)*0.5, cy=(s.y||0)+dimY(s)*0.5, cz=(s.z||0)+dimZ(s)*0.5;
     const q=new THREE.Quaternion().setFromEuler(
       new THREE.Euler((s.rx||0)*Math.PI/180,(s.ry||0)*Math.PI/180,(s.rz||0)*Math.PI/180,'ZYX'));
     const mw=new THREE.Matrix4().compose(new THREE.Vector3(cx,cy,cz),q,new THREE.Vector3(1,1,1));
@@ -702,7 +767,7 @@ function open3DEditor(item, deps = {}){
     if(!s.customPositions||!s._footprintDeformed) return;
     const {x0,z0,x1,z1}=getFootprintAABB(s);
     const visW=x1-x0, visD=z1-z0;
-    const old_cx=(s.x||0)+(s.sx||1)*0.5, old_cz=(s.z||0)+(s.sz||1)*0.5;
+    const old_cx=(s.x||0)+dimX(s)*0.5, old_cz=(s.z||0)+dimZ(s)*0.5;
     const new_cx=x0+visW*0.5, new_cz=z0+visD*0.5;
     const delta_cx=old_cx-new_cx, delta_cz=old_cz-new_cz;
     if(Math.abs(delta_cx)>1e-9||Math.abs(delta_cz)>1e-9){
@@ -726,21 +791,24 @@ function open3DEditor(item, deps = {}){
     shapes.forEach((s,i)=>{
       let geo;
       if(s.kind==='box'){
-        geo=new THREE.BoxGeometry(s.sx||1,s.sy||1,s.sz||1);
-        if(s.customPositions&&s.customPositions.length===geo.attributes.position.array.length){
-          geo.attributes.position.array.set(s.customPositions);
-          geo.attributes.position.needsUpdate=true;
-          geo.computeVertexNormals();
-        }
+        geo=new THREE.BoxGeometry(dimX(s),dimY(s),dimZ(s));
       } else {
-        geo=new THREE.SphereGeometry(s.r||0.5,32,24);
+        // Unit sphere, scaled to the shape's true dimensions — bakes sx/sy/sz into the
+        // vertex positions directly (same idea as BoxGeometry(sx,sy,sz)), so a non-uniform
+        // scale produces an ellipsoid. BufferGeometry.scale also updates normals correctly
+        // for non-uniform scale (via the normal matrix), so lighting stays correct.
+        geo=new THREE.SphereGeometry(0.5,32,24);
+        geo.scale(dimX(s),dimY(s),dimZ(s));
+      }
+      if(s.customPositions&&s.customPositions.length===geo.attributes.position.array.length){
+        geo.attributes.position.array.set(s.customPositions);
+        geo.attributes.position.needsUpdate=true;
+        geo.computeVertexNormals();
       }
       const col = parseInt((s.color||'#2D5A8E').replace('#',''), 16);
       const mat = new THREE.MeshLambertMaterial({ color: col });
       const mesh = new THREE.Mesh(geo, mat);
-      const sW_r = s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
-      const sH_r = s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
-      const sD_r = s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+      const sW_r = dimX(s), sH_r = dimY(s), sD_r = dimZ(s);
       mesh.position.set((s.x||0)+sW_r*0.5, (s.y||0)+sH_r*0.5, (s.z||0)+sD_r*0.5);
       mesh.rotation.set(
         (s.rx||0)*Math.PI/180,
@@ -769,19 +837,17 @@ function open3DEditor(item, deps = {}){
 
     if(selectedIdx !== null && selectedIdx < shapes.length){
       const s = shapes[selectedIdx];
-      const sW = s.kind==='box'?(s.sx||1):(s.r||0.5)*2;
-      const sH = s.kind==='box'?(s.sy||1):(s.r||0.5)*2;
-      const sD = s.kind==='box'?(s.sz||1):(s.r||0.5)*2;
+      const sW = dimX(s), sH = dimY(s), sD = dimZ(s);
       const maxObjY=getMaxObjY(s);
       const minObjY=getMinObjY(s);
-      const _aabb=s.customPositions&&s.kind==='box'?getFootprintAABB(s):null;
+      const _aabb=s.customPositions?getFootprintAABB(s):null;
       const pos = new THREE.Vector3(
         _aabb?(_aabb.x0+_aabb.x1)*0.5:(s.x||0)+sW*0.5,
         _aabb?(minObjY+maxObjY)*0.5:(s.y||0)+sH*0.5,
         _aabb?(_aabb.z0+_aabb.z1)*0.5:(s.z||0)+sD*0.5);
-      const extX = s.kind==='box' ? (s.sx||1)*0.5+0.6 : (s.r||0.5)+0.6;
+      const extX = sW*0.5+0.6;
       const extY = maxObjY - pos.y + 0.6;
-      const extZ = s.kind==='box' ? (s.sz||1)*0.5+0.6 : (s.r||0.5)+0.6;
+      const extZ = sD*0.5+0.6;
       const axisDefs = [
         {dir:new THREE.Vector3(1,0,0), len:extX, col:0xff3333, axisName:'x'},
         {dir:new THREE.Vector3(0,1,0), len:extY, col:0x33cc33, axisName:'y'},
@@ -832,8 +898,7 @@ function open3DEditor(item, deps = {}){
           new THREE.BoxGeometry(HSIZE*2.2,HSIZE*2.2,HSIZE*2.2),
           new THREE.MeshBasicMaterial({visible:false}));
         proxy.position.set(cx,bottomY,cz);
-        proxy.userData={isScaleHandle:true, anchorX:ax, anchorZ:az,
-          isSphere:s.kind==='sphere'};
+        proxy.userData={isScaleHandle:true, anchorX:ax, anchorZ:az};
         scene3d.add(proxy);
         scaleHandles.push({_visuals:[vis],_proxy:proxy,setColor(c){visMat.color.setHex(c);}});
       });
@@ -856,8 +921,7 @@ function open3DEditor(item, deps = {}){
           new THREE.BoxGeometry(HSIZE*2.2,HSIZE*2.2,HSIZE*2.2),
           new THREE.MeshBasicMaterial({visible:false}));
         proxy.position.set(midX,topY,midZ);
-        proxy.userData={isHeightHandle:true,
-          startTopY:topY, startH: s.kind==='box'?(s.sy||1):(s.r||0.5)*2};
+        proxy.userData={isHeightHandle:true, startTopY:topY};
         scene3d.add(proxy);
         scaleHandles.push({_visuals:[vis],_proxy:proxy,
           setColor(c){visMat.color.setHex(c);}});
@@ -888,10 +952,8 @@ function open3DEditor(item, deps = {}){
         })();
       } else {
         const _visH=s.customYMax!==undefined&&s.customYMin!==undefined
-          ?s.customYMax-s.customYMin:(s.sy||1);
-        const RING_R=s.kind==='box'
-          ?Math.sqrt(((s.sx||1)**2+_visH**2+(s.sz||1)**2)/4)+0.5
-          :(s.r||0.5)+0.5;
+          ?s.customYMax-s.customYMin:dimY(s);
+        const RING_R=Math.sqrt((dimX(s)**2+_visH**2+dimZ(s)**2)/4)+0.5;
         const TUBE_R=0.045, PROXY_R=0.11, SEG=64;
         axisDefs.forEach(({col,axisName},ai)=>{
           const visMat=new THREE.MeshLambertMaterial({color:col,side:THREE.DoubleSide});
@@ -935,15 +997,9 @@ function open3DEditor(item, deps = {}){
     setField('prop-px', s.x||0);
     setField('prop-py', s.y||0);
     setField('prop-pz', s.z||0);
-    document.getElementById('prop-box-group').style.display    = s.kind==='box'   ?'':'none';
-    document.getElementById('prop-sphere-group').style.display = s.kind==='sphere'?'':'none';
-    if(s.kind==='box'){
-      setField('prop-sx', s.sx||1);
-      setField('prop-sy', s.sy||1);
-      setField('prop-sz', s.sz||1);
-    } else {
-      setField('prop-r', s.r||0.5);
-    }
+    setField('prop-sx', dimX(s));
+    setField('prop-sy', dimY(s));
+    setField('prop-sz', dimZ(s));
     const SWATCH_COLORS = [
       '#cc2222','#22882a','#2255cc','#cc6600','#7722bb','#ccaa00','#444444',
       '#ff8888','#88dd88','#88aaff','#ffaa55','#cc88ff','#ffee66','#cccccc'
@@ -991,7 +1047,6 @@ function open3DEditor(item, deps = {}){
   bindProp('prop-rx','rx'); bindProp('prop-ry','ry'); bindProp('prop-rz','rz');
   bindProp('prop-px','x');  bindProp('prop-py','y');  bindProp('prop-pz','z');
   bindProp('prop-sx','sx'); bindProp('prop-sy','sy'); bindProp('prop-sz','sz');
-  bindProp('prop-r','r');
 
   // ── Shape add buttons ────────────────────────────────────────────────────────
   document.getElementById('add-box').addEventListener('click',()=>{
@@ -1001,7 +1056,7 @@ function open3DEditor(item, deps = {}){
     rebuildMeshes(); renderProps();
   });
   document.getElementById('add-sphere').addEventListener('click',()=>{
-    shapes.push({kind:'sphere', x:-0.5, y:0, z:-0.5, r:0.5, color:'#cc2222'});
+    shapes.push({kind:'sphere', x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, color:'#cc2222'});
     selectedIdx = shapes.length-1; _gizmoMode='translate';
     logUsage('model_shape_add',{id:item.id, kind:'sphere', shapeCount:shapes.length});
     rebuildMeshes(); renderProps();
@@ -1045,10 +1100,7 @@ function open3DEditor(item, deps = {}){
     const AXES = {x:new THREE.Vector3(1,0,0), y:new THREE.Vector3(0,1,0), z:new THREE.Vector3(0,0,1)};
     const dir = AXES[axisName];
     const s = shapes[selectedIdx];
-    const hhs  = (s.kind==='box'?(s.sy||1):(s.r||0.5)*2)*0.5;
-    const hhsW = (s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
-    const hhsD = (s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
-    const objWorld = new THREE.Vector3((s.x||0)+hhsW, (s.y||0)+hhs, (s.z||0)+hhsD);
+    const objWorld = new THREE.Vector3((s.x||0)+dimX(s)*0.5, (s.y||0)+dimY(s)*0.5, (s.z||0)+dimZ(s)*0.5);
     const p0 = objWorld.clone().project(camera3d);
     const p1 = objWorld.clone().addScaledVector(dir, 1).project(camera3d);
     const sx = p1.x - p0.x;
@@ -1062,10 +1114,7 @@ function open3DEditor(item, deps = {}){
   function getDragSensitivity(){
     if(selectedIdx === null) return 0.01;
     const s = shapes[selectedIdx];
-    const hh  = (s.kind==='box'?(s.sy||1):(s.r||0.5)*2)*0.5;
-    const hhW = (s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
-    const hhD = (s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
-    const objPos = new THREE.Vector3((s.x||0)+hhW, (s.y||0)+hh, (s.z||0)+hhD);
+    const objPos = new THREE.Vector3((s.x||0)+dimX(s)*0.5, (s.y||0)+dimY(s)*0.5, (s.z||0)+dimZ(s)*0.5);
     return camera3d.position.distanceTo(objPos) * 0.001;
   }
 
@@ -1089,19 +1138,12 @@ function open3DEditor(item, deps = {}){
       if(ud.isHeightHandle){
         const camDir=new THREE.Vector3();
         camera3d.getWorldDirection(camDir); camDir.y=0; camDir.normalize();
-        const sWh2=(s.kind==='box'?(s.sx||1):(s.r||0.5)*2)*0.5;
-        const sDh2=(s.kind==='box'?(s.sz||1):(s.r||0.5)*2)*0.5;
         const dragPlane=new THREE.Plane(camDir,
-          -camDir.dot(new THREE.Vector3((s.x||0)+sWh2,ud.startTopY,(s.z||0)+sDh2)));
+          -camDir.dot(new THREE.Vector3((s.x||0)+dimX(s)*0.5,ud.startTopY,(s.z||0)+dimZ(s)*0.5)));
         const startPt=new THREE.Vector3();
         raycaster.ray.intersectPlane(dragPlane,startPt);
-        const _hAABB=getFootprintAABB(s);
         _scaleDrag={kind:'height', dragPlane, startPt:startPt.clone(),
-          startH:ud.startH, isSphere:s.kind==='sphere',
-          startSx:s.sx||1, startSz:s.sz||1,
-          startW:(_hAABB.x1-_hAABB.x0)*0.5, startD:(_hAABB.z1-_hAABB.z0)*0.5,
-          startMinObjY:getMinObjY(s), startMaxObjY:getMaxObjY(s),
-          startCx:(_hAABB.x0+_hAABB.x1)*0.5, startCz:(_hAABB.z0+_hAABB.z1)*0.5};
+          startMinObjY:getMinObjY(s), startMaxObjY:getMaxObjY(s)};
         const _hm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
         if(_hm){_hm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_hm.geometry.attributes.position.array);}
       } else {
@@ -1117,15 +1159,13 @@ function open3DEditor(item, deps = {}){
         // offset so the drag is relative to the click, not an absolute snap to it.
         const _cornerPos=scaleHits[0].object.position;
         _scaleDrag={kind:'corner', anchorX:ud.anchorX, anchorZ:ud.anchorZ,
-          dragPlane, isSphere:ud.isSphere,
+          dragPlane,
           startAABBW:Math.max(0.001,startAABB.x1-startAABB.x0),
           startAABBD:Math.max(0.001,startAABB.z1-startAABB.z0),
           sideX:_cornerPos.x<ud.anchorX?-1:1, sideZ:_cornerPos.z<ud.anchorZ?-1:1,
           offsetX:_cornerPos.x-_cSP.x, offsetZ:_cornerPos.z-_cSP.z};
-        if(!ud.isSphere){
-          const _cm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
-          if(_cm){_cm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_cm.geometry.attributes.position.array);}
-        }
+        const _cm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
+        if(_cm){_cm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_cm.geometry.attributes.position.array);}
       }
       controls3d.enabled=false;
       renderer3d.domElement.style.cursor='grabbing';
@@ -1229,39 +1269,22 @@ function open3DEditor(item, deps = {}){
       if(!raycaster.ray.intersectPlane(_scaleDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
       if(_scaleDrag.kind==='height'){
-        if(_scaleDrag.isSphere){
-          const dy=curPt.y-_scaleDrag.startPt.y;
-          const newR=Math.max(0.05,parseFloat((_scaleDrag.startH*0.5+dy*0.5).toFixed(2)));
-          s.r=newR; updatePropField('prop-r',newR);
-        } else {
-          if(_scaleDrag.origPositions){
-            const targetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
-            applyHeightDeform(s,_scaleDrag.startMinObjY,_scaleDrag.startMaxObjY,targetMaxObjY,_scaleDrag.origPositions);
-            updatePropField('prop-sy',parseFloat((s.customYMax-s.customYMin).toFixed(2)));
-          }
+        if(_scaleDrag.origPositions){
+          const targetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
+          applyHeightDeform(s,_scaleDrag.startMinObjY,_scaleDrag.startMaxObjY,targetMaxObjY,_scaleDrag.origPositions);
+          updatePropField('prop-sy',parseFloat((s.customYMax-s.customYMin).toFixed(2)));
         }
-      } else {
+      } else if(_scaleDrag.origPositions){
         const ax=_scaleDrag.anchorX, az=_scaleDrag.anchorZ;
         const MIN_AABB=0.15;
         const dragX=curPt.x+_scaleDrag.offsetX, dragZ=curPt.z+_scaleDrag.offsetZ;
         const cx2=_scaleDrag.sideX<0?Math.min(dragX,ax-MIN_AABB):Math.max(dragX,ax+MIN_AABB);
         const cz2=_scaleDrag.sideZ<0?Math.min(dragZ,az-MIN_AABB):Math.max(dragZ,az+MIN_AABB);
         const newAABBW=Math.abs(cx2-ax), newAABBD=Math.abs(cz2-az);
-        const newCx=(cx2+ax)*0.5, newCz=(cz2+az)*0.5;
-        if(_scaleDrag.isSphere){
-          const newSize=Math.max(0.1,parseFloat(((newAABBW+newAABBD)*0.5).toFixed(2)));
-          const newR=parseFloat((newSize*0.5).toFixed(2));
-          s.r=newR;
-          s.x=parseFloat((newCx-newR).toFixed(3));
-          s.z=parseFloat((newCz-newR).toFixed(3));
-          updatePropField('prop-r',newR);
-          updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
-        } else if(_scaleDrag.origPositions){
-          const scaleX=newAABBW/_scaleDrag.startAABBW, scaleZ=newAABBD/_scaleDrag.startAABBD;
-          applyFootprintDeform(s,ax,az,scaleX,scaleZ,_scaleDrag.origPositions);
-          updatePropField('prop-sx',parseFloat(newAABBW.toFixed(2)));
-          updatePropField('prop-sz',parseFloat(newAABBD.toFixed(2)));
-        }
+        const scaleX=newAABBW/_scaleDrag.startAABBW, scaleZ=newAABBD/_scaleDrag.startAABBD;
+        applyFootprintDeform(s,ax,az,scaleX,scaleZ,_scaleDrag.origPositions);
+        updatePropField('prop-sx',parseFloat(newAABBW.toFixed(2)));
+        updatePropField('prop-sz',parseFloat(newAABBD.toFixed(2)));
       }
       rebuildMeshes(); return;
     }
@@ -1314,8 +1337,8 @@ function open3DEditor(item, deps = {}){
     }
     if(_scaleDrag){
       if(selectedIdx!==null){
-        if(_scaleDrag.kind==='height'&&!_scaleDrag.isSphere) bakeHeightDeform(shapes[selectedIdx]);
-        if(_scaleDrag.kind==='corner'&&!_scaleDrag.isSphere) bakeFootprintDeform(shapes[selectedIdx]);
+        if(_scaleDrag.kind==='height') bakeHeightDeform(shapes[selectedIdx]);
+        if(_scaleDrag.kind==='corner') bakeFootprintDeform(shapes[selectedIdx]);
         // Baking mutates s.customPositions/s.sy/s.y but the rendered mesh geometry buffer
         // isn't touched until the next rebuild. The next drag's mousedown snapshots
         // origPositions straight from that mesh buffer, so without this rebuild here it
@@ -1437,6 +1460,7 @@ function open3DEditor(item, deps = {}){
 
   function teardown3d(){
     animRunning = false;
+    resizeObserver3d.disconnect();
     clearArrows();
     clearScaleHandles();
     controls3d.dispose();
