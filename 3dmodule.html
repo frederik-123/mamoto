@@ -342,6 +342,7 @@ function buildSceneMeshes(scene, shapes){
     else if(s.kind === 'cylinder'){ geo = new THREE.CylinderGeometry(0.5,0.5,1,32); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else if(s.kind === 'pyramid'){ geo = new THREE.ConeGeometry(0.5,1,s.sides||4); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else if(s.kind === 'prism'){ geo = new THREE.CylinderGeometry(0.5,0.5,1,s.sides||3); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
+    else if(s.kind === 'cone'){ geo = new THREE.ConeGeometry(0.5,1,32); geo.scale(s.sx||1,s.sy||1,s.sz||1); }
     else                 geo = new THREE.SphereGeometry((s.r||0.5), 32, 24);
     const mat = new THREE.MeshLambertMaterial({color: s.color || 0x2D5A8E});
     const mesh = new THREE.Mesh(geo, mat);
@@ -841,6 +842,9 @@ function open3DEditor(item, deps = {}){
       } else if(s.kind==='cylinder'){
         geo=new THREE.CylinderGeometry(0.5,0.5,1,32);
         geo.scale(dimX(s),dimY(s),dimZ(s));
+      } else if(s.kind==='cone'){
+        geo=new THREE.ConeGeometry(0.5,1,32);
+        geo.scale(dimX(s),dimY(s),dimZ(s));
       } else {
         // Unit sphere, scaled to the shape's true dimensions — bakes sx/sy/sz into the
         // vertex positions directly (same idea as BoxGeometry(sx,sy,sz)), so a non-uniform
@@ -1254,7 +1258,13 @@ function open3DEditor(item, deps = {}){
     logUsage('model_shape_add',{id:item.id, kind:'prism', shapeCount:shapes.length});
     rebuildMeshes(); renderProps();
   });
-  document.getElementById('add-cone').addEventListener('click',()=>toast('Coming soon'));
+  document.getElementById('add-cone').addEventListener('click',()=>{
+    pushUndo();
+    shapes.push({kind:'cone', x:-0.5, y:0, z:-0.5, sx:1, sy:1, sz:1, color:'#cc6611'});
+    selectedIdx=shapes.length-1; _gizmoMode='translate';
+    logUsage('model_shape_add',{id:item.id, kind:'cone', shapeCount:shapes.length});
+    rebuildMeshes(); renderProps();
+  });
   document.getElementById('btn3d-undo').addEventListener('click', undoOp);
   document.getElementById('btn3d-redo').addEventListener('click', redoOp);
   document.getElementById('btn3d-delete').addEventListener('click', deleteSelected);
