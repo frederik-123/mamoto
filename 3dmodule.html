@@ -114,6 +114,8 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);user-se
 .shape-add-btn:disabled:hover{background:var(--surface);border-color:var(--border-soft)}
 .shape-add-btn.danger{color:var(--red)}
 .shape-add-btn.danger:not(:disabled):hover{background:var(--red-light);border-color:var(--red)}
+.shape-add-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.shape-add-btn.active:hover{background:#1e3f66;border-color:#1e3f66}
 #editor3d-canvas-wrap{flex:1;position:relative;background:#e8eef7;cursor:grab}
 #editor3d-canvas-wrap.grabbing{cursor:grabbing}
 #editor3d-canvas{width:100%;height:100%;display:block}
@@ -458,6 +460,7 @@ function open3DEditor(item, deps = {}){
             '<button class="shape-add-btn" id="btn3d-paste" disabled title="Paste (Ctrl+V)" style="font-size:11px;font-weight:600">Paste</button>' +
           '</div>' +
           '<button class="shape-add-btn danger" id="btn3d-delete" disabled title="Delete (Del)" style="font-size:11px;font-weight:600;width:calc(100% - 4px)">Delete</button>' +
+          '<button class="shape-add-btn active" id="btn3d-snap" title="Toggle grid snapping" style="font-size:11px;font-weight:600;width:calc(100% - 4px);margin-top:4px">Snap: ON</button>' +
         '</div>' +
       '</div>' +
       '<div id="editor3d-canvas-wrap"><canvas id="editor3d-canvas"></canvas>' +
@@ -582,7 +585,16 @@ function open3DEditor(item, deps = {}){
   scene3d.add(sunLight);
   scene3d.add(new THREE.HemisphereLight(0x8888cc, 0x444422, 0.4));
 
-  scene3d.add(new THREE.GridHelper(20, 20, 0x6699cc, 0x99bbdd));
+  const subGrid = new THREE.GridHelper(20, 200, 0xd0e8f8, 0xd0e8f8);
+  subGrid.renderOrder = 0;
+  subGrid.material.transparent = true;
+  subGrid.material.opacity = 0.35;
+  subGrid.material.depthWrite = false;
+  scene3d.add(subGrid);
+  const mainGrid = new THREE.GridHelper(20, 20, 0x6699cc, 0x99bbdd);
+  mainGrid.renderOrder = 1;
+  scene3d.add(mainGrid);
+  const GRID_SNAP = 0.1;
   const groundGeo = new THREE.PlaneGeometry(20,20);
   const groundMat = new THREE.MeshBasicMaterial({
     color: 0xaaccee, transparent: true, opacity: 0.35,
@@ -591,6 +603,43 @@ function open3DEditor(item, deps = {}){
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
   scene3d.add(ground);
+
+  // Vertical ruler — shown only while Y-scale or Y-translate drag is active
+  const _rulerGroup = new THREE.Group();
+  (function(){
+    const RMAX=5, SUB=0.04, MAJ=0.14;
+    _rulerGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(
+        [new THREE.Vector3(0,0,0),new THREE.Vector3(0,RMAX,0)]),
+      new THREE.LineBasicMaterial({color:0x4477aa})));
+    const minorPts=[], majorPts=[];
+    for(let i=0;i<=RMAX/GRID_SNAP;i++){
+      const y=i*GRID_SNAP;
+      if(i%10===0){
+        majorPts.push(new THREE.Vector3(-MAJ,y,0),new THREE.Vector3(MAJ,y,0));
+        majorPts.push(new THREE.Vector3(0,y,-MAJ),new THREE.Vector3(0,y,MAJ));
+      } else {
+        minorPts.push(new THREE.Vector3(-SUB,y,0),new THREE.Vector3(SUB,y,0));
+        minorPts.push(new THREE.Vector3(0,y,-SUB),new THREE.Vector3(0,y,SUB));
+      }
+    }
+    _rulerGroup.add(new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(minorPts),
+      new THREE.LineBasicMaterial({color:0x4477aa})));
+    _rulerGroup.add(new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(majorPts),
+      new THREE.LineBasicMaterial({color:0xffffff})));
+  })();
+  const MRK=0.20;
+  const _rulerMarker=new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-MRK,0,0),new THREE.Vector3(MRK,0,0),
+      new THREE.Vector3(0,0,-MRK),new THREE.Vector3(0,0,MRK)
+    ]),
+    new THREE.LineBasicMaterial({color:0xff8800}));
+  _rulerGroup.add(_rulerMarker);
+  _rulerGroup.visible=false;
+  scene3d.add(_rulerGroup);
 
   // ── Mesh management ─────────────────────────────────────────────────────────
   let axisArrows   = [];
@@ -771,6 +820,7 @@ function open3DEditor(item, deps = {}){
     }
     s.sy=parseFloat(visH.toFixed(3));
     s.y=parseFloat(s.customYMin.toFixed(3));
+    delete s.customYMin; delete s.customYMax;
   }
 
   // Vertex-level world-space XZ scaling, anchored at a fixed world corner (anchorX,anchorZ).
@@ -795,8 +845,6 @@ function open3DEditor(item, deps = {}){
       deformed[k*3]=v.x; deformed[k*3+1]=v.y; deformed[k*3+2]=v.z;
     }
     s.customPositions=deformed;
-    s.customYMin=keepYMin;
-    s.customYMax=keepYMax;
     s._footprintDeformed=true;
   }
 
@@ -920,10 +968,24 @@ function open3DEditor(item, deps = {}){
         ];
         const solidLine=new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(pts),
-          new THREE.LineBasicMaterial({color:shapeCol,linewidth:2})
+          new THREE.LineBasicMaterial({color:shapeCol,linewidth:2,depthTest:false})
         );
+        solidLine.renderOrder=1;
         scene3d.add(solidLine);
         scaleHandles.push({_visuals:[solidLine],_proxy:null});
+      })();
+
+      (()=>{
+        const CH=0.07;
+        const cross=new THREE.LineSegments(
+          new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(midX-CH,0.002,midZ),new THREE.Vector3(midX+CH,0.002,midZ),
+            new THREE.Vector3(midX,0.002,midZ-CH),new THREE.Vector3(midX,0.002,midZ+CH),
+          ]),
+          new THREE.LineBasicMaterial({color:shapeCol,depthTest:false}));
+        cross.renderOrder=1;
+        scene3d.add(cross);
+        scaleHandles.push({_visuals:[cross],_proxy:null});
       })();
 
       const bottomY=getMinObjY(s);
@@ -1274,6 +1336,12 @@ function open3DEditor(item, deps = {}){
   document.getElementById('btn3d-delete').addEventListener('click', deleteSelected);
   document.getElementById('btn3d-copy').addEventListener('click', copySelected);
   document.getElementById('btn3d-paste').addEventListener('click', pasteSelected);
+  document.getElementById('btn3d-snap').addEventListener('click', ()=>{
+    _snapEnabled = !_snapEnabled;
+    const btn = document.getElementById('btn3d-snap');
+    btn.textContent = _snapEnabled ? 'Snap: ON' : 'Snap: OFF';
+    btn.classList.toggle('active', _snapEnabled);
+  });
   updateEditBtns();
 
   // ── Interaction ──────────────────────────────────────────────────────────────
@@ -1284,6 +1352,7 @@ function open3DEditor(item, deps = {}){
   let _hoveredArrow = null;
   let _mouseDownPos = null;
   let _lastTouch    = null;
+  let _snapEnabled  = true;
 
   const ARROW_COLORS = [0x111111, 0x33cc33, 0x3399ff];
   const ARROW_HOVER  = [0x555555, 0x77ee77, 0x77bbff];
@@ -1357,6 +1426,11 @@ function open3DEditor(item, deps = {}){
           startMinObjY:getMinObjY(s), startMaxObjY:getMaxObjY(s)};
         const _hm=meshes.find(m=>m.userData.shapeIdx===selectedIdx&&m.type==='Mesh');
         if(_hm){_hm.updateWorldMatrix(true,false);_scaleDrag.origPositions=new Float32Array(_hm.geometry.attributes.position.array);}
+        _rulerGroup.position.set((s.x||0)+dimX(s)*0.5,0,(s.z||0)+dimZ(s)*0.5);
+        _rulerGroup.visible=true;
+        const _hhe=scaleHandles.find(h=>h._proxy===scaleHits[0].object);
+        if(_hhe) _hhe._visuals.forEach(v=>v.visible=false);
+        _scaleDrag.heightHandleEntry=_hhe||null;
       } else {
         // The corner handles sit at bottomY = getMinObjY(s), which for a box tilted around
         // X/Z is BELOW s.y (the box's nominal, untilted floor). A drag plane at s.y would
@@ -1415,6 +1489,16 @@ function open3DEditor(item, deps = {}){
       _gizmoDrag.worldAxis=WORLD_AXES[aName];
       _gizmoDrag.startQuaternion=srcMesh?srcMesh.quaternion.clone():new THREE.Quaternion();
     }
+    if(_gizmoMode==='translate'&&aName==='y'){
+      const _rs=shapes[selectedIdx];
+      _rulerGroup.position.set((_rs.x||0)+dimX(_rs)*0.5,0,(_rs.z||0)+dimZ(_rs)*0.5);
+      _gizmoDrag.yMarkerOffset=getMaxObjY(_rs)-(_rs.y||0);
+      _rulerMarker.position.y=getMaxObjY(_rs);
+      _rulerGroup.visible=true;
+      const _yhe=scaleHandles.find(h=>h._proxy&&h._proxy.userData.isHeightHandle);
+      if(_yhe) _yhe._visuals.forEach(v=>v.visible=false);
+      _gizmoDrag.heightHandleEntry=_yhe||null;
+    }
     controls3d.enabled=false;
     renderer3d.domElement.style.cursor='grabbing';
     return true;
@@ -1470,8 +1554,16 @@ function open3DEditor(item, deps = {}){
       const curPt=new THREE.Vector3();
       if(!raycaster.ray.intersectPlane(_meshDrag.dragPlane,curPt)) return;
       const s=shapes[selectedIdx];
-      s.x=parseFloat((curPt.x-_meshDrag.offsetX).toFixed(3));
-      s.z=parseFloat((curPt.z-_meshDrag.offsetZ).toFixed(3));
+      const rawX=curPt.x-_meshDrag.offsetX, rawZ=curPt.z-_meshDrag.offsetZ;
+      if(_snapEnabled){
+        s.x=rawX; s.z=rawZ;
+        const {x0,z0}=getFootprintAABB(s);
+        s.x=parseFloat((rawX+Math.round(x0/GRID_SNAP)*GRID_SNAP-x0).toFixed(3));
+        s.z=parseFloat((rawZ+Math.round(z0/GRID_SNAP)*GRID_SNAP-z0).toFixed(3));
+      } else {
+        s.x=parseFloat(rawX.toFixed(3));
+        s.z=parseFloat(rawZ.toFixed(3));
+      }
       updatePropField('prop-px',s.x); updatePropField('prop-pz',s.z);
       rebuildMeshes(); return;
     }
@@ -1486,14 +1578,18 @@ function open3DEditor(item, deps = {}){
       const s=shapes[selectedIdx];
       if(_scaleDrag.kind==='height'){
         if(_scaleDrag.origPositions){
-          const targetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
+          const rawTargetMaxObjY=_scaleDrag.startMaxObjY+(curPt.y-_scaleDrag.startPt.y);
+          const targetMaxObjY=_snapEnabled?Math.max(_scaleDrag.startMinObjY+GRID_SNAP,Math.round(rawTargetMaxObjY/GRID_SNAP)*GRID_SNAP):rawTargetMaxObjY;
           applyHeightDeform(s,_scaleDrag.startMinObjY,_scaleDrag.startMaxObjY,targetMaxObjY,_scaleDrag.origPositions);
           updatePropField('prop-sy',parseFloat((s.customYMax-s.customYMin).toFixed(2)));
+          _rulerMarker.position.y=targetMaxObjY;
         }
       } else if(_scaleDrag.origPositions){
         const ax=_scaleDrag.anchorX, az=_scaleDrag.anchorZ;
         const MIN_AABB=0.15;
-        const dragX=curPt.x+_scaleDrag.offsetX, dragZ=curPt.z+_scaleDrag.offsetZ;
+        const _rawDragX=curPt.x+_scaleDrag.offsetX, _rawDragZ=curPt.z+_scaleDrag.offsetZ;
+        const dragX=_snapEnabled?Math.round(_rawDragX/GRID_SNAP)*GRID_SNAP:_rawDragX;
+        const dragZ=_snapEnabled?Math.round(_rawDragZ/GRID_SNAP)*GRID_SNAP:_rawDragZ;
         const cx2=_scaleDrag.sideX<0?Math.min(dragX,ax-MIN_AABB):Math.max(dragX,ax+MIN_AABB);
         const cz2=_scaleDrag.sideZ<0?Math.min(dragZ,az-MIN_AABB):Math.max(dragZ,az+MIN_AABB);
         const newAABBW=Math.abs(cx2-ax), newAABBD=Math.abs(cz2-az);
@@ -1502,7 +1598,12 @@ function open3DEditor(item, deps = {}){
         updatePropField('prop-sx',parseFloat(newAABBW.toFixed(2)));
         updatePropField('prop-sz',parseFloat(newAABBD.toFixed(2)));
       }
-      rebuildMeshes(); return;
+      rebuildMeshes();
+      if(_scaleDrag.kind==='height'){
+        const _hhe=scaleHandles.find(h=>h._proxy&&h._proxy.userData.isHeightHandle);
+        if(_hhe){ _hhe._visuals.forEach(v=>v.visible=false); _scaleDrag.heightHandleEntry=_hhe; }
+      }
+      return;
     }
     if(!_gizmoDrag) return;
     const pixelDelta=_gizmoMode==='rotate'?(movX-movY):(_gizmoDrag.screenAxis==='x'?movX:movY);
@@ -1524,8 +1625,18 @@ function open3DEditor(item, deps = {}){
     } else {
       let newVal=parseFloat((_gizmoDrag.startVal+worldDelta).toFixed(2));
       if(_gizmoDrag.minVal>-Infinity) newVal=Math.max(_gizmoDrag.minVal,newVal);
+      if(_snapEnabled&&_gizmoDrag.axisName==='y'){
+        const topOffset=_gizmoDrag.yMarkerOffset||0;
+        const rawTopY=newVal+topOffset;
+        newVal=parseFloat((Math.round(rawTopY/GRID_SNAP)*GRID_SNAP-topOffset).toFixed(3));
+      }
       shapes[selectedIdx][_gizmoDrag.shapeProp]=newVal;
       rebuildMeshes();
+      if(_gizmoDrag.axisName==='y'){
+        const _yhe=scaleHandles.find(h=>h._proxy&&h._proxy.userData.isHeightHandle);
+        if(_yhe){ _yhe._visuals.forEach(v=>v.visible=false); _gizmoDrag.heightHandleEntry=_yhe; }
+        _rulerMarker.position.y=newVal+(_gizmoDrag.yMarkerOffset||0);
+      }
       updatePropField('prop-p'+_gizmoDrag.axisName,newVal);
     }
   }
@@ -1563,6 +1674,8 @@ function open3DEditor(item, deps = {}){
         rebuildMeshes();
         logUsage('model_property_change',{id:item.id,shapeIdx:selectedIdx,via:'scale_corner_drag'});
       }
+      if(_scaleDrag.heightHandleEntry) _scaleDrag.heightHandleEntry._visuals.forEach(v=>v.visible=true);
+      _rulerGroup.visible=false;
       _scaleDrag=null; _dragUndoPushed=false; controls3d.enabled=true; renderer3d.domElement.style.cursor='';
     }
     if(_gizmoDrag){
@@ -1574,6 +1687,8 @@ function open3DEditor(item, deps = {}){
           via:'gizmo_drag'
         });
       }
+      if(_gizmoDrag.heightHandleEntry) _gizmoDrag.heightHandleEntry._visuals.forEach(v=>v.visible=true);
+      _rulerGroup.visible=false;
       _gizmoDrag = null; _dragUndoPushed = false;
       setArrowHover(null);
       controls3d.enabled = true;
